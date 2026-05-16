@@ -433,46 +433,48 @@ export default function ResolverPage() {
   const [searchParams] = useSearchParams();
   const { token } = useParams();
 
+  const emvQuery = searchParams.get("emv");
+
   useEffect(() => {
-  async function resolveToken(): Promise<void> {
-    const emvFromQuery = searchParams.get("emv");
-
-    if (emvFromQuery) {
-      setInput(emvFromQuery);
-      setScanMessage("Payment payload resolved from URL query.");
-      return;
-    }
-
-    if (!token) return;
-
-    try {
-      setScanMessage(`Resolving payment token: ${token}`);
-
-      const response = await fetch(`/api/payment-links/${token}`);
-
-      if (!response.ok) {
-        throw new Error("Payment token not found.");
+    async function resolveToken(): Promise<void> {
+      if (emvQuery) {
+        setInput(emvQuery);
+        setScanMessage("Payment payload resolved from URL query.");
+        return;
       }
 
-      const record = (await response.json()) as {
-        token: string;
-        emvPayload: string;
-        createdAt: string;
-        isActive: boolean;
-      };
+      if (!token) return;
 
-      setInput(record.emvPayload);
-      setScanMessage("Payment token resolved successfully.");
-    } catch (error) {
-      console.error(error);
-      setScanMessage("Could not resolve payment token.");
+      try {
+        setScanMessage(`Resolving payment token: ${token}`);
+
+        const response = await fetch(`/api/payment-links/${token}`);
+
+        if (!response.ok) {
+          throw new Error("Payment token not found.");
+        }
+
+        const record = (await response.json()) as {
+          token: string;
+          emvPayload: string;
+          createdAt: string;
+          isActive: boolean;
+        };
+
+        setInput(record.emvPayload);
+        setScanMessage("Payment token resolved successfully.");
+      } catch (error) {
+        console.error(error);
+        setScanMessage("Could not resolve payment token.");
+      }
     }
-  }
 
-  void resolveToken();
-}, [token, searchParams]);
+    void resolveToken();
+  }, [token, emvQuery]);
 
-  const deepLink = extracted.token
+  const deepLink = token
+  ? `bimpay://pay/${encodeURIComponent(token)}`
+  : extracted.token
     ? `bimpay://pay/${encodeURIComponent(extracted.token)}`
     : extracted.emv
       ? `bimpay://pay?emv=${encodeURIComponent(extracted.emv)}`

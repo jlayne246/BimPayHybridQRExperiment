@@ -113,6 +113,8 @@ export default function CreatePaymentQrPage() {
 
   async function generateQrs(): Promise<void> {
     try {
+      setMessage("Generating QR codes...");
+
       const response = await fetch("/api/payment-links", {
         method: "POST",
         headers: {
@@ -124,7 +126,8 @@ export default function CreatePaymentQrPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Could not create payment link token.");
+        const errorText = await response.text();
+        throw new Error(errorText || "Could not create payment link token.");
       }
 
       const record = (await response.json()) as {
@@ -134,9 +137,11 @@ export default function CreatePaymentQrPage() {
         isActive: boolean;
       };
 
-      const embeddedPaymentLink = `${window.location.origin}/pay?emv=${encodeURIComponent(emvPayload)}`;
+      const embeddedLink = `${window.location.origin}/pay?emv=${encodeURIComponent(
+        emvPayload
+      )}`;
 
-      const tokenizedPaymentLink = `${window.location.origin}/pay/${record.token}`;
+      const tokenizedLink = `${window.location.origin}/pay/${record.token}`;
 
       const rawQrDataUrl = await QRCode.toDataURL(emvPayload, {
         errorCorrectionLevel: "M",
@@ -144,13 +149,13 @@ export default function CreatePaymentQrPage() {
         width: 360,
       });
 
-      const embeddedLinkQrDataUrl = await QRCode.toDataURL(embeddedPaymentLink, {
+      const embeddedLinkQrDataUrl = await QRCode.toDataURL(embeddedLink, {
         errorCorrectionLevel: "M",
         margin: 2,
         width: 360,
       });
 
-      const tokenizedLinkQrDataUrl = await QRCode.toDataURL(tokenizedPaymentLink, {
+      const tokenizedLinkQrDataUrl = await QRCode.toDataURL(tokenizedLink, {
         errorCorrectionLevel: "M",
         margin: 2,
         width: 360,
@@ -158,14 +163,18 @@ export default function CreatePaymentQrPage() {
 
       setToken(record.token);
       setRawQr(rawQrDataUrl);
-      setEmbeddedPaymentLink(embeddedPaymentLink);
-      setTokenizedPaymentLink(tokenizedPaymentLink);
+      setEmbeddedPaymentLink(embeddedLink);
+      setTokenizedPaymentLink(tokenizedLink);
       setEmbeddedLinkQr(embeddedLinkQrDataUrl);
       setTokenizedLinkQr(tokenizedLinkQrDataUrl);
       setMessage("Tokenized payment link and QR codes generated.");
     } catch (error) {
       console.error(error);
-      setMessage("Could not generate tokenized payment link.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not generate tokenized payment link."
+      );
     }
   }
 
@@ -212,6 +221,12 @@ export default function CreatePaymentQrPage() {
             {message && (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700">
                 {message}
+              </div>
+            )}
+
+            {token && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700">
+                Token: <span className="font-mono">{token}</span>
               </div>
             )}
           </div>
