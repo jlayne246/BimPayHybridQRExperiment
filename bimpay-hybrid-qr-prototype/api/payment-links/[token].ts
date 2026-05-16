@@ -1,7 +1,4 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { Redis } from "@upstash/redis";
-
-const redis = Redis.fromEnv();
 
 type PaymentLinkRecord = {
   token: string;
@@ -10,6 +7,15 @@ type PaymentLinkRecord = {
   isActive: boolean;
 };
 
+const globalStore = globalThis as typeof globalThis & {
+  paymentLinks?: Map<string, PaymentLinkRecord>;
+};
+
+const paymentLinks =
+  globalStore.paymentLinks ?? new Map<string, PaymentLinkRecord>();
+
+globalStore.paymentLinks = paymentLinks;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed." });
@@ -17,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const token = String(req.query.token ?? "");
 
-  const record = await redis.get<PaymentLinkRecord>(`payment-link:${token}`);
+  const record = paymentLinks.get(token);
 
   if (!record || !record.isActive) {
     return res.status(404).json({ error: "Payment link not found." });

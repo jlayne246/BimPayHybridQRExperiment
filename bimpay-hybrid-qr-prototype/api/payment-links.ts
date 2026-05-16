@@ -1,8 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { Redis } from "@upstash/redis";
 import { nanoid } from "nanoid";
-
-const redis = Redis.fromEnv();
 
 type PaymentLinkRecord = {
   token: string;
@@ -10,6 +7,15 @@ type PaymentLinkRecord = {
   createdAt: string;
   isActive: boolean;
 };
+
+const globalStore = globalThis as typeof globalThis & {
+  paymentLinks?: Map<string, PaymentLinkRecord>;
+};
+
+const paymentLinks =
+  globalStore.paymentLinks ?? new Map<string, PaymentLinkRecord>();
+
+globalStore.paymentLinks = paymentLinks;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -31,9 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isActive: true,
   };
 
-  await redis.set(`payment-link:${token}`, record, {
-    ex: 60 * 60 * 24 * 30,
-  });
+  paymentLinks.set(token, record);
 
   return res.status(201).json(record);
 }
