@@ -1,21 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { nanoid } from "nanoid";
+import { getRedisClient } from "./_redis";
 
 type PaymentLinkRecord = {
   token: string;
   emvPayload: string;
   createdAt: string;
+  expiresAt: string;
   isActive: boolean;
 };
 
-const globalStore = globalThis as typeof globalThis & {
-  paymentLinks?: Map<string, PaymentLinkRecord>;
-};
-
-const paymentLinks =
-  globalStore.paymentLinks ?? new Map<string, PaymentLinkRecord>();
-
-globalStore.paymentLinks = paymentLinks;
+const TTL_SECONDS = 60 * 60 * 24;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -28,16 +23,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "emvPayload is required." });
   }
 
-  const token = nanoid(10);
+  const token = nanoid(12);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + TTL_SECONDS * 1000).toISOString();
 
   const record: PaymentLinkRecord = {
     token,
     emvPayload,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
+    expiresAt,
     isActive: true,
   };
 
-  paymentLinks.set(token, record);
+  console.log("Saving token:", token);
+  console.log("Redis key:", `payment-link:${token}`);
+
+  const redis = await getRedisClient();
+
+  await redis.setEx(
+    `payment-link:${token}`,
+    TTL_SECONDS,
+    JSON.stringify(record)
+  );
 
   return res.status(201).json(record);
 }
