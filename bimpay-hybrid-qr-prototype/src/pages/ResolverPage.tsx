@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import jsQR from "jsqr";
+import {
+  BrowserMultiFormatReader,
+  type IScannerControls,
+} from "@zxing/browser";
 
 type ExtractMode = "empty" | "raw-emv" | "payment-link";
 
@@ -25,9 +29,9 @@ interface TlvParseError {
   declaredLength?: number;
 }
 
-type ExtendedMediaTrackConstraints = MediaTrackConstraints & {
-  focusMode?: ConstrainDOMString;
-};
+// type ExtendedMediaTrackConstraints = MediaTrackConstraints & {
+//   focusMode?: ConstrainDOMString;
+// };
 
 type TlvItem = TlvField | TlvParseError;
 
@@ -423,13 +427,20 @@ export default function ResolverPage() {
   const scanCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationRef = useRef<number | null>(null);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const scannerControlsRef = useRef<IScannerControls | null>(null);
+
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+    "environment"
+  );
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
 
   const extracted = useMemo<ExtractedPayload>(() => extractPayload(input), [input]);
   const fields = useMemo<TlvItem[]>(() => (extracted.emv ? parseTlv(extracted.emv) : []), [extracted.emv]);
   const crc = useMemo<CrcResult | null>(() => (extracted.emv ? validateEmvCrc(extracted.emv) : null), [extracted.emv]);
   const summary = useMemo<PaymentSummary>(() => summarizePayment(fields), [fields]);
+
+  // const codeReader = new BrowserMultiFormatReader();
 
   const [searchParams] = useSearchParams();
   // const { token } = useParams();
@@ -517,94 +528,108 @@ export default function ResolverPage() {
   }
 
   function scanVideoFrame(): void {
-  const video = videoRef.current;
-  const canvas = scanCanvasRef.current;
+    const video = videoRef.current;
+    const canvas = scanCanvasRef.current;
 
-  if (!video || !canvas || !isCameraOpen) return;
+    if (!video || !canvas || !isCameraOpen) return;
 
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) return;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return;
 
-  if (
-    video.readyState !== video.HAVE_ENOUGH_DATA ||
-    video.videoWidth === 0 ||
-    video.videoHeight === 0
-  ) {
+    if (
+      video.readyState !== video.HAVE_ENOUGH_DATA ||
+      video.videoWidth === 0 ||
+      video.videoHeight === 0
+    ) {
+      animationRef.current = requestAnimationFrame(scanVideoFrame);
+      return;
+    }
+
+    // Scale up the camera frame to help jsQR read dense/custom QR codes
+    const scale = Math.max(1, 1400 / Math.max(video.videoWidth, video.videoHeight));
+
+    canvas.width = Math.floor(video.videoWidth * scale);
+    canvas.height = Math.floor(video.videoHeight * scale);
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+    const result = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "attemptBoth",
+    });
+
+    if (result?.data) {
+      setInput(result.data);
+      setScanMessage("QR scanned successfully from camera.");
+      stopCamera();
+      return;
+    }
+
     animationRef.current = requestAnimationFrame(scanVideoFrame);
-    return;
   }
 
-  // Scale up the camera frame to help jsQR read dense/custom QR codes
-  const scale = Math.max(1, 1400 / Math.max(video.videoWidth, video.videoHeight));
-
-  canvas.width = Math.floor(video.videoWidth * scale);
-  canvas.height = Math.floor(video.videoHeight * scale);
-
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-
-  const result = jsQR(imageData.data, imageData.width, imageData.height, {
-    inversionAttempts: "attemptBoth",
-  });
-
-  if (result?.data) {
-    setInput(result.data);
-    setScanMessage("QR scanned successfully from camera.");
-    stopCamera();
-    return;
+  function getCameraByMode(
+    devices: MediaDeviceInfo[],
+    mode: "user" | "environment"
+  ): MediaDeviceInfo | undefined {
+    return (
+      devices.find((device) =>
+        mode === "environment"
+          ? /back|rear|environment/i.test(device.label)
+          : /front|user|face/i.test(device.label)
+      ) ?? devices[0]
+    );
   }
 
-  animationRef.current = requestAnimationFrame(scanVideoFrame);
-}
-
-  async function openCameraWithMode(mode: "user" | "environment"): Promise<void> {
+  async function openCameraWithMode(
+    mode: "user" | "environment"
+  ): Promise<void> {
     try {
       setScanMessage("Opening camera...");
 
-      const videoConstraints: ExtendedMediaTrackConstraints = {
-        facingMode: { ideal: mode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        focusMode: "continuous",
-      };
+      scannerControlsRef.current?.stop();
+      scannerControlsRef.current = null;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: false,
-      });
+      if (!codeReaderRef.current) {
+        codeReaderRef.current = new BrowserMultiFormatReader();
+      }
 
-      streamRef.current = stream;
-      setIsCameraOpen(true);
+      const videoInputDevices =
+        await BrowserMultiFormatReader.listVideoInputDevices();
 
-      const video = videoRef.current;
+      const selectedDevice = getCameraByMode(videoInputDevices, mode);
 
-      if (!video) {
-        setScanMessage("Video element was not found.");
+      if (!selectedDevice?.deviceId || !videoRef.current) {
+        setScanMessage("No camera device found.");
         return;
       }
 
-      video.srcObject = stream;
+      setIsCameraOpen(true);
 
-      video.onloadedmetadata = async () => {
-        await video.play();
+      const controls = await codeReaderRef.current.decodeFromVideoDevice(
+        selectedDevice.deviceId,
+        videoRef.current,
+        (result) => {
+          if (!result) return;
 
-        setScanMessage(
-          `Camera open (${mode}). Resolution: ${video.videoWidth}x${video.videoHeight}`
-        );
+          setInput(result.getText());
+          setScanMessage("QR scanned successfully.");
 
-        animationRef.current = requestAnimationFrame(scanVideoFrame);
-      };
+          scannerControlsRef.current?.stop();
+          scannerControlsRef.current = null;
+          setIsCameraOpen(false);
+        }
+      );
+
+      scannerControlsRef.current = controls;
     } catch (error) {
       console.error(error);
+      setScanMessage("Could not open camera.");
 
-      if (error instanceof DOMException) {
-        setScanMessage(`Camera error: ${error.name}. ${error.message}`);
-      } else {
-        setScanMessage("Could not open the camera.");
-      }
-
-      stopCamera();
+      scannerControlsRef.current?.stop();
+      scannerControlsRef.current = null;
+      setIsCameraOpen(false);
     }
   }
 
@@ -615,7 +640,10 @@ export default function ResolverPage() {
   function flipCamera(): void {
     const nextMode = facingMode === "environment" ? "user" : "environment";
 
-    stopCamera();
+    scannerControlsRef.current?.stop();
+    scannerControlsRef.current = null;
+
+    setIsCameraOpen(false);
     setFacingMode(nextMode);
 
     window.setTimeout(() => {
