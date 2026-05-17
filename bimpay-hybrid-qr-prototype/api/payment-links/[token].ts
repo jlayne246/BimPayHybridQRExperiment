@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getRedisClient } from "../_redis";
+import { getRedisClient } from "../_redis.js";
 
 type PaymentLinkRecord = {
   token: string;
