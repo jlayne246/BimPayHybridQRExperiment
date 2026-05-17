@@ -55,14 +55,20 @@ async function createPaymentLink(req: VercelRequest, res: VercelResponse) {
 }
 
 async function getPaymentLink(req: VercelRequest, res: VercelResponse) {
+  console.log("GET payment link query:", req.query);
+  
   const token = String(req.query.token ?? req.query.t ?? "").trim();
 
   if (!token) {
     return res.status(400).json({ error: "token is required." });
   }
 
-  const redis = await getRedisClient();
-  const raw = await redis.get(`payment-link:${token}`);
+  console.log("Resolved token:", token);
+
+    const redis = await getRedisClient();
+    const raw = await redis.get(`payment-link:${token}`);
+
+    console.log("Redis raw value:", raw);
 
   if (!raw) {
     return res.status(404).json({ error: "Payment link not found or expired." });
