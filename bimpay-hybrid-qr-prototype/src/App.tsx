@@ -21,7 +21,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ResolverPage />} />
           <Route path="/pay" element={<ResolverPage />} />
-          <Route path="/pay/:token" element={<ResolverPage />} />
           <Route path="/create" element={<CreatePaymentQrPage />} />
         </Routes>
 
