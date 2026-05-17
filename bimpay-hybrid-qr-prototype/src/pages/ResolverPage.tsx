@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import jsQR from "jsqr";
 
 type ExtractMode = "empty" | "raw-emv" | "payment-link";
@@ -202,17 +202,18 @@ function extractPayload(input: string): ExtractedPayload {
   try {
     const url = new URL(trimmed);
     const emvParam = url.searchParams.get("emv");
+    const tokenParam = url.searchParams.get("t");
     const payloadParam = url.searchParams.get("payload");
     const codeParam = url.searchParams.get("code");
-    const token = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
+    // const token = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
 
     return {
       mode: "payment-link",
       original: input,
       link: trimmed,
       emv: emvParam ?? payloadParam ?? codeParam ?? "",
-      token,
-      error: emvParam || payloadParam || codeParam ? "" : "No emv, payload, or code query parameter found.",
+      token: tokenParam ?? "",
+      error: emvParam || payloadParam || codeParam || tokenParam ? "" : "No emv, payload, or code query parameter found.",
     };
   } catch {
     return {
@@ -431,54 +432,65 @@ export default function ResolverPage() {
   const summary = useMemo<PaymentSummary>(() => summarizePayment(fields), [fields]);
 
   const [searchParams] = useSearchParams();
-  const { token } = useParams();
+  // const { token } = useParams();
 
   const emvQuery = searchParams.get("emv");
+  const tokenQuery = searchParams.get("t");
 
   useEffect(() => {
-    async function resolveToken(): Promise<void> {
-      if (emvQuery) {
-        setInput(emvQuery);
-        setScanMessage("Payment payload resolved from URL query.");
-        return;
+    async function resolvePaymentIntent(): Promise<void> {
+      if (tokenQuery) {
+        try {
+          setScanMessage(`Resolving payment token: ${tokenQuery}`);
+
+          const response = await fetch(`/api/payment-links/${tokenQuery}`);
+
+          if (!response.ok) {
+            throw new Error("Payment token not found.");
+          }
+
+          const record = (await response.json()) as {
+            token: string;
+            emvPayload: string;
+            createdAt: string;
+            isActive: boolean;
+          };
+
+          setInput(record.emvPayload);
+          setScanMessage("Payment token resolved successfully.");
+          return;
+        } catch (error) {
+          console.error(error);
+
+          if (emvQuery) {
+            setInput(emvQuery);
+            setScanMessage(
+              "Token could not be resolved. Falling back to embedded EMV payload."
+            );
+            return;
+          }
+
+          setScanMessage("Could not resolve payment token.");
+          return;
+        }
       }
 
-      if (!token) return;
-
-      try {
-        setScanMessage(`Resolving payment token: ${token}`);
-
-        const response = await fetch(`/api/payment-links/${token}`);
-
-        if (!response.ok) {
-          throw new Error("Payment token not found.");
-        }
-
-        const record = (await response.json()) as {
-          token: string;
-          emvPayload: string;
-          createdAt: string;
-          isActive: boolean;
-        };
-
-        setInput(record.emvPayload);
-        setScanMessage("Payment token resolved successfully.");
-      } catch (error) {
-        console.error(error);
-        setScanMessage("Could not resolve payment token.");
+      if (emvQuery) {
+        setInput(emvQuery);
+        setScanMessage("Payment payload resolved from embedded EMV query.");
       }
     }
 
-    void resolveToken();
-  }, [token, emvQuery]);
+    void resolvePaymentIntent();
+  }, [tokenQuery, emvQuery]);
 
-  const deepLink = token
-  ? `bimpay://pay/${encodeURIComponent(token)}`
-  : extracted.token
-    ? `bimpay://pay/${encodeURIComponent(extracted.token)}`
-    : extracted.emv
-      ? `bimpay://pay?emv=${encodeURIComponent(extracted.emv)}`
-      : "";
+  const deepLink = tokenQuery
+  ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(tokenQuery)}${
+      extracted.emv ? `&emv=${encodeURIComponent(extracted.emv)}` : ""
+    }`
+  : extracted.emv
+    ? `https://pay.bimpay.bb/p?emv=${encodeURIComponent(extracted.emv)}`
+    : "";
 
   const validFields = fields.filter(isTlvField);
   const parseErrors = fields.length - validFields.length;
@@ -684,13 +696,27 @@ export default function ResolverPage() {
     event.target.value = "";
   }
 
-  function simulateLaunch(): void {
+  async function showUniversalLink(): Promise<void> {
     if (!deepLink) {
-      setScanMessage("No deeplink could be constructed.");
+      setScanMessage(
+        "No hypothetical universal payment link could be constructed."
+      );
       return;
     }
 
-    setScanMessage(`Prototype deeplink generated: ${deepLink}`);
+    try {
+      await navigator.clipboard.writeText(deepLink);
+
+      setScanMessage(
+        `Hypothetical interoperable payment link copied:\n${deepLink}`
+      );
+    } catch (error) {
+      console.error(error);
+
+      setScanMessage(
+        `Could not copy link automatically:\n${deepLink}`
+      );
+    }
   }
 
   return (
@@ -855,14 +881,14 @@ export default function ResolverPage() {
 
                 <button
                   className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-200"
-                  onClick={simulateLaunch}
+                  onClick={showUniversalLink}
                   type="button"
                 >
-                  Simulate FI App Launch
+                  Copy Universal Payment Link
                 </button>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-2 text-sm font-bold text-slate-950">Generated Deeplink</div>
+                  <div className="mb-2 text-sm font-bold text-slate-950">Hypothetical Universal Payment Link</div>
                   <div className="rounded-xl bg-white p-3 font-mono text-xs leading-5 text-slate-700 break-all shadow-inner">
                     {deepLink || "—"}
                   </div>

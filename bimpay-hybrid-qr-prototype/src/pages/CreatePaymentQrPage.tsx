@@ -254,9 +254,11 @@ export default function CreatePaymentQrPage() {
   const [token, setToken] = useState("");
   const [embeddedPaymentLink, setEmbeddedPaymentLink] = useState("");
   const [tokenizedPaymentLink, setTokenizedPaymentLink] = useState("");
+  const [completePaymentLink, setCompletePaymentLink] = useState("");
   const [rawQr, setRawQr] = useState("");
   const [embeddedLinkQr, setEmbeddedLinkQr] = useState("");
   const [tokenizedLinkQr, setTokenizedLinkQr] = useState("");
+  const [completeLinkQr, setCompleteLinkQr] = useState("");
   const [message, setMessage] = useState("");
   const [amountMode, setAmountMode] = useState<AmountMode>("variable");
   const [advancedMode, setAdvancedMode] = useState(false);
@@ -341,6 +343,7 @@ export default function CreatePaymentQrPage() {
 
       let createdToken = "";
       let tokenizedLink = "";
+      let completeLink = "";
 
       try {
         const response = await fetch("/api/payment-links", {
@@ -352,7 +355,9 @@ export default function CreatePaymentQrPage() {
         if (response.ok) {
           const record = (await response.json()) as PaymentLinkRecord;
           createdToken = record.token;
-          tokenizedLink = `${window.location.origin}/pay/${record.token}`;
+          tokenizedLink = `${window.location.origin}/pay?t=${record.token}`;
+
+          completeLink = `${window.location.origin}/pay?t=${record.token}&emv=${encodeURIComponent(emvPayload)}`;
         } else {
           console.warn("Token API returned non-OK response", await response.text());
         }
@@ -380,15 +385,25 @@ export default function CreatePaymentQrPage() {
           })
         : "";
 
+      const completeLinkQrDataUrl = completeLink
+        ? await QRCode.toDataURL(completeLink, {
+            errorCorrectionLevel: "M",
+            margin: 2,
+            width: 380,
+          })
+        : "";
+
       setToken(createdToken);
       setRawQr(rawQrDataUrl);
       setEmbeddedPaymentLink(embeddedLink);
       setTokenizedPaymentLink(tokenizedLink);
       setEmbeddedLinkQr(embeddedLinkQrDataUrl);
       setTokenizedLinkQr(tokenizedLinkQrDataUrl);
+      setCompletePaymentLink(completeLink);
+      setCompleteLinkQr(completeLinkQrDataUrl);
       setMessage(
         tokenizedLink
-          ? "Raw, embedded-link, and tokenized QR codes generated."
+          ? "Raw, embedded-link, tokenized and complete QR codes generated."
           : "Raw and embedded-link QR codes generated. Token API was unavailable."
       );
     } catch (error) {
@@ -704,6 +719,14 @@ export default function CreatePaymentQrPage() {
             value={tokenizedPaymentLink}
             qr={tokenizedLinkQr}
             onCopy={() => copyText(tokenizedPaymentLink)}
+          />
+
+          <OutputBlock
+            title="Complete Payment Link"
+            description="Full payment link with all necessary parameters (token and EMV payload)."
+            value={completePaymentLink}
+            qr={completeLinkQr}
+            onCopy={() => copyText(completePaymentLink)}
           />
 
           <EditorSection
