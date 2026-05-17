@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import jsQR from "jsqr";
 import {
   BrowserMultiFormatReader,
@@ -442,6 +442,8 @@ export default function ResolverPage() {
 
   // const codeReader = new BrowserMultiFormatReader();
 
+  const navigate = useNavigate();
+
   const [searchParams] = useSearchParams();
   // const { token } = useParams();
 
@@ -569,6 +571,23 @@ export default function ResolverPage() {
     animationRef.current = requestAnimationFrame(scanVideoFrame);
   }
 
+  function handleScannedPayload(value: string): void {
+    setInput(value);
+
+    try {
+      const url = new URL(value);
+
+      const token = url.searchParams.get("t") ?? url.searchParams.get("token");
+      const emv = url.searchParams.get("emv");
+
+      if (token || emv) {
+        navigate(`${url.pathname}${url.search}`);
+      }
+    } catch {
+      // Raw EMV payload. setInput(value) is enough.
+    }
+  }
+
   function getCameraByMode(
     devices: MediaDeviceInfo[],
     mode: "user" | "environment"
@@ -613,7 +632,7 @@ export default function ResolverPage() {
         (result) => {
           if (!result) return;
 
-          setInput(result.getText());
+          handleScannedPayload(result.getText());
           setScanMessage("QR scanned successfully.");
 
           scannerControlsRef.current?.stop();
