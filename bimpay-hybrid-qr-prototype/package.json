@@ -1,7 +1,7 @@
 {
   "name": "bimpay-hybrid-qr-prototype",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "api": "tsx server/index.ts",
