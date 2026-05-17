@@ -433,7 +433,7 @@ export default function ResolverPage() {
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
 
-  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+  const [facingMode] = useState<"user" | "environment">(
     "environment"
   );
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
