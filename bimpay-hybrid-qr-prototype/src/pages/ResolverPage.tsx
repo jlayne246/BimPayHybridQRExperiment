@@ -420,6 +420,9 @@ function FieldCard({ field }: FieldCardProps) {
 }
 
 export default function ResolverPage() {
+  console.log("ResolverPage mounted");
+  console.log("Current URL:", window.location.href);
+  
   const [input, setInput] = useState<string>(SAMPLE_LINK);
   const [scanMessage, setScanMessage] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
