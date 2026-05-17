@@ -62,7 +62,7 @@ interface PaymentSummary {
 const SAMPLE_EMV =
   "00020101021126780014bb.org.cb.mpqr0108TESTROC10208TESTROC103153000002075787870405333331104QRBB52044111530305254043.505802BB5910Sample Bus6010Bridgetown62120808Bus fare80360014bb.org.cb.mpqr01142026051609300063044C51";
 
-const SAMPLE_LINK = `https://ips.bimpay.com/pay/test?emv=${encodeURIComponent(SAMPLE_EMV)}`;
+const SAMPLE_LINK = `https://pay.bimpay.bb/pay/test?emv=${encodeURIComponent(SAMPLE_EMV)}`;
 
 const TAG_NAMES: Record<string, string> = {
   "00": "Payload Format Indicator",
