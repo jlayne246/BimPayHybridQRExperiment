@@ -456,6 +456,8 @@ export default function ResolverPage() {
         try {
           setScanMessage(`Resolving payment token: ${tokenQuery}`);
 
+          console.log("RESOLVING TOKEN QUERY:", tokenQuery);
+
           const response = await fetch(
             `/api/payment-links?t=${encodeURIComponent(tokenQuery)}`
           );
@@ -575,7 +577,13 @@ export default function ResolverPage() {
     setInput(value);
 
     try {
+      console.log("HANDLE PAYLOAD:", value);
+
       const url = new URL(value);
+
+      console.log("TOKEN:", url.searchParams.get("t"));
+      console.log("EMV:", url.searchParams.get("emv"));
+      console.log("PATH:", `${url.pathname}${url.search}`);
 
       const token = url.searchParams.get("t") ?? url.searchParams.get("token");
       const emv = url.searchParams.get("emv");
@@ -632,7 +640,12 @@ export default function ResolverPage() {
         (result) => {
           if (!result) return;
 
-          handleScannedPayload(result.getText());
+          const scanned = result.getText();
+
+          console.log("SCANNED:", scanned);
+
+          handleScannedPayload(scanned);
+
           setScanMessage("QR scanned successfully.");
 
           scannerControlsRef.current?.stop();
