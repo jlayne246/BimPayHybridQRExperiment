@@ -22,6 +22,7 @@ export default function App() {
           <Route path="/" element={<ResolverPage />} />
           <Route path="/pay" element={<ResolverPage />} />
           <Route path="/create" element={<CreatePaymentQrPage />} />
+          <Route path="*" element={<ResolverPage />} />
         </Routes>
 
         <footer className="border-t bg-white px-6 py-4 text-center text-sm text-slate-500">

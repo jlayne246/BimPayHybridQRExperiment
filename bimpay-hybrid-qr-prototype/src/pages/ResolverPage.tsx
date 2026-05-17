@@ -422,7 +422,7 @@ function FieldCard({ field }: FieldCardProps) {
 export default function ResolverPage() {
   console.log("ResolverPage mounted");
   console.log("Current URL:", window.location.href);
-  
+
   const [input, setInput] = useState<string>(SAMPLE_LINK);
   const [scanMessage, setScanMessage] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -686,14 +686,14 @@ export default function ResolverPage() {
     }, 150);
   }
 
-  async function refocusCamera(): Promise<void> {
-      const currentMode = facingMode;
-      stopCamera();
+  // async function refocusCamera(): Promise<void> {
+  //     const currentMode = facingMode;
+  //     stopCamera();
 
-      window.setTimeout(() => {
-        void openCameraWithMode(currentMode);
-      }, 250);
-    }
+  //     window.setTimeout(() => {
+  //       void openCameraWithMode(currentMode);
+  //     }, 250);
+  //   }
 
   useEffect(() => {
     if (isCameraOpen) {
@@ -864,29 +864,29 @@ export default function ResolverPage() {
                   </button>
 
                   <button
-                    className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-200"
+                    className="col-span-full w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-200"
                     onClick={isCameraOpen ? stopCamera : openCamera}
                     type="button"
                   >
                     {isCameraOpen ? "Stop Camera" : "Open Camera Scanner"}
                   </button>
 
-                  <button
+                  {/* <button
                     className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-slate-300"
                     onClick={flipCamera}
                     type="button"
                     disabled={!isCameraOpen}
                   >
                     Flip Camera
-                  </button>
-                  <button
+                  </button> */}
+                  {/* <button
                     className="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-amber-500"
                     onClick={refocusCamera}
                     type="button"
                     disabled={!isCameraOpen}
                   >
                     Refocus Camera
-                  </button>
+                  </button> */}
                 </div>
 
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleQrUpload} />
