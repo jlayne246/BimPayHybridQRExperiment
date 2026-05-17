@@ -672,19 +672,19 @@ export default function ResolverPage() {
     void openCameraWithMode(facingMode);
   }
 
-  function flipCamera(): void {
-    const nextMode = facingMode === "environment" ? "user" : "environment";
+  // function flipCamera(): void {
+  //   const nextMode = facingMode === "environment" ? "user" : "environment";
 
-    scannerControlsRef.current?.stop();
-    scannerControlsRef.current = null;
+  //   scannerControlsRef.current?.stop();
+  //   scannerControlsRef.current = null;
 
-    setIsCameraOpen(false);
-    setFacingMode(nextMode);
+  //   setIsCameraOpen(false);
+  //   setFacingMode(nextMode);
 
-    window.setTimeout(() => {
-      void openCameraWithMode(nextMode);
-    }, 150);
-  }
+  //   window.setTimeout(() => {
+  //     void openCameraWithMode(nextMode);
+  //   }, 150);
+  // }
 
   // async function refocusCamera(): Promise<void> {
   //     const currentMode = facingMode;
