@@ -454,10 +454,11 @@ export default function ResolverPage() {
             emvPayload: string;
             createdAt: string;
             isActive: boolean;
+            expiresAt: string;
           };
 
           setInput(record.emvPayload);
-          setScanMessage("Payment token resolved successfully.");
+          setScanMessage("Payment token resolved successfully. Token expires at " + new Date(record.expiresAt).toLocaleTimeString());
           return;
         } catch (error) {
           console.error(error);

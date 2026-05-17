@@ -10,7 +10,7 @@ type PaymentLinkRecord = {
   isActive: boolean;
 };
 
-const TTL_SECONDS = 60 * 60 * 24;
+const TTL_SECONDS = 60 * 15; // 15 minutes
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
