@@ -443,7 +443,9 @@ export default function ResolverPage() {
         try {
           setScanMessage(`Resolving payment token: ${tokenQuery}`);
 
-          const response = await fetch(`/api/payment-links/${tokenQuery}`);
+          const response = await fetch(
+            `/api/payment-links?t=${encodeURIComponent(tokenQuery)}`
+          );
 
           if (!response.ok) {
             throw new Error("Payment token not found.");

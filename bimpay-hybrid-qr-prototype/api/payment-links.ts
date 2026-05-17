@@ -10,13 +10,21 @@ type PaymentLinkRecord = {
   isActive: boolean;
 };
 
-const TTL_SECONDS = 60 * 15; // 15 minutes
+const TTL_SECONDS = 60 * 15;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed." });
+  if (req.method === "POST") {
+    return createPaymentLink(req, res);
   }
 
+  if (req.method === "GET") {
+    return getPaymentLink(req, res);
+  }
+
+  return res.status(405).json({ error: "Method not allowed." });
+}
+
+async function createPaymentLink(req: VercelRequest, res: VercelResponse) {
   const { emvPayload } = req.body as { emvPayload?: string };
 
   if (!emvPayload?.trim()) {
@@ -35,9 +43,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     isActive: true,
   };
 
-  console.log("Saving token:", token);
-  console.log("Redis key:", `payment-link:${token}`);
-
   const redis = await getRedisClient();
 
   await redis.setEx(
@@ -47,4 +52,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   );
 
   return res.status(201).json(record);
+}
+
+async function getPaymentLink(req: VercelRequest, res: VercelResponse) {
+  const token = String(req.query.token ?? req.query.t ?? "").trim();
+
+  if (!token) {
+    return res.status(400).json({ error: "token is required." });
+  }
+
+  const redis = await getRedisClient();
+  const raw = await redis.get(`payment-link:${token}`);
+
+  if (!raw) {
+    return res.status(404).json({ error: "Payment link not found or expired." });
+  }
+
+  const record = JSON.parse(raw) as PaymentLinkRecord;
+
+  if (!record.isActive) {
+    return res.status(404).json({ error: "Payment link is inactive." });
+  }
+
+  return res.status(200).json(record);
 }
