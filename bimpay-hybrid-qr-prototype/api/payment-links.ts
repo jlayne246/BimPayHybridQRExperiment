@@ -13,6 +13,10 @@ type PaymentLinkRecord = {
 const TTL_SECONDS = 60 * 15;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
   if (req.method === "POST") {
     return createPaymentLink(req, res);
   }

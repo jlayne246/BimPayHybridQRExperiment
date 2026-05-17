@@ -462,7 +462,10 @@ export default function ResolverPage() {
           console.log("RESOLVING TOKEN QUERY:", tokenQuery);
 
           const response = await fetch(
-            `/api/payment-links?t=${encodeURIComponent(tokenQuery)}`
+            `/api/payment-links?t=${encodeURIComponent(tokenQuery)}`,
+            {
+              cache: "no-store",
+            }
           );
 
           if (!response.ok) {
