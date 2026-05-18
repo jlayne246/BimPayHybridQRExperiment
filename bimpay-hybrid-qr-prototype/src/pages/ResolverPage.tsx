@@ -461,18 +461,29 @@ export default function ResolverPage() {
 
           console.log("RESOLVING TOKEN QUERY:", tokenQuery);
 
-          const response = await fetch(
-            `/api/payment-links?t=${encodeURIComponent(tokenQuery)}`,
-            {
-              cache: "no-store",
-            }
-          );
+          const apiUrl = `${window.location.origin}/api/payment-links?t=${encodeURIComponent(
+            tokenQuery
+          )}`;
+
+          console.log("Fetching token from:", apiUrl);
+
+          const response = await fetch(apiUrl, {
+            cache: "no-store",
+            headers: {
+              Accept: "application/json",
+            },
+          });
+
+          console.log("Fetch status:", response.status);
+
+          const text = await response.text();
+          console.log("Fetch raw response:", text);
 
           if (!response.ok) {
-            throw new Error("Payment token not found.");
+            throw new Error(text || "Payment token not found.");
           }
 
-          const record = (await response.json()) as {
+          const record = JSON.parse(text) as {
             token: string;
             emvPayload: string;
             createdAt: string;
