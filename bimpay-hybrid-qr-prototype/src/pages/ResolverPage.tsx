@@ -447,85 +447,94 @@ export default function ResolverPage() {
 
   const navigate = useNavigate();
 
-  const currentUrl = new URL(window.location.href);
-
-  const emvQuery = currentUrl.searchParams.get("emv");
-  const tokenQuery =
-    currentUrl.searchParams.get("t") ?? currentUrl.searchParams.get("token");
+  var deepLink = "";
 
   useEffect(() => {
-    async function resolvePaymentIntent(): Promise<void> {
-      if (tokenQuery) {
-        try {
-          setScanMessage(`Resolving payment token: ${tokenQuery}`);
+  async function resolvePaymentIntent(): Promise<void> {
+    const currentUrl = new URL(window.location.href);
 
-          console.log("RESOLVING TOKEN QUERY:", tokenQuery);
+    const emvQuery = currentUrl.searchParams.get("emv");
+    const tokenQuery =
+      currentUrl.searchParams.get("t") ?? currentUrl.searchParams.get("token");
 
-          const apiUrl = `${window.location.origin}/api/payment-links?t=${encodeURIComponent(
-            tokenQuery
-          )}`;
+    console.log("Resolver mounted at:", currentUrl.href);
+    console.log("Token query:", tokenQuery);
+    console.log("EMV query:", emvQuery);
 
-          console.log("Fetching token from:", apiUrl);
+    if (tokenQuery) {
+      try {
+        const apiUrl = `${window.location.origin}/api/payment-links?t=${encodeURIComponent(
+          tokenQuery
+        )}`;
 
-          const response = await fetch(apiUrl, {
-            cache: "no-store",
-            headers: {
-              Accept: "application/json",
-            },
-          });
+        console.log("Fetching token from:", apiUrl);
 
-          console.log("Fetch status:", response.status);
+        const response = await fetch(apiUrl, {
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        });
 
-          const text = await response.text();
-          console.log("Fetch raw response:", text);
+        console.log("Fetch status:", response.status);
 
-          if (!response.ok) {
-            throw new Error(text || "Payment token not found.");
-          }
+        const text = await response.text();
+        console.log("Fetch raw response:", text);
 
-          const record = JSON.parse(text) as {
-            token: string;
-            emvPayload: string;
-            createdAt: string;
-            isActive: boolean;
-            expiresAt: string;
-          };
+        if (!response.ok) {
+          throw new Error(text || "Payment token not found.");
+        }
 
-          setInput(record.emvPayload);
-          setScanMessage("Payment token resolved successfully. Token expires at " + new Date(record.expiresAt).toLocaleTimeString());
-          return;
-        } catch (error) {
-          console.error(error);
+        const record = JSON.parse(text) as {
+          token: string;
+          emvPayload: string;
+          createdAt: string;
+          isActive: boolean;
+          expiresAt: string;
+        };
 
-          if (emvQuery) {
-            setInput(emvQuery);
-            setScanMessage(
-              "Token could not be resolved. Falling back to embedded EMV payload."
-            );
-            return;
-          }
+        console.log("Resolved record:", record);
 
-          setScanMessage("Could not resolve payment token.");
+        setInput(record.emvPayload);
+        setScanMessage(
+          `Payment token resolved successfully. Token expires at ${new Date(
+            record.expiresAt
+          ).toLocaleTimeString()}`
+        );
+
+        return;
+      } catch (error) {
+        console.error(error);
+
+        if (emvQuery) {
+          setInput(emvQuery);
+          setScanMessage(
+            "Token could not be resolved. Falling back to embedded EMV payload."
+          );
           return;
         }
-      }
 
-      if (emvQuery) {
-        setInput(emvQuery);
-        setScanMessage("Payment payload resolved from embedded EMV query.");
+        setScanMessage("Could not resolve payment token.");
+        return;
       }
     }
 
-    void resolvePaymentIntent();
-  }, []);
+    if (emvQuery) {
+      setInput(emvQuery);
+      setScanMessage("Payment payload resolved from embedded EMV query.");
+    }
 
-  const deepLink = tokenQuery
-  ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(tokenQuery)}${
-      extracted.emv ? `&emv=${encodeURIComponent(extracted.emv)}` : ""
-    }`
-  : extracted.emv
-    ? `https://pay.bimpay.bb/p?emv=${encodeURIComponent(extracted.emv)}`
-    : "";
+    deepLink = tokenQuery
+      ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(tokenQuery)}${
+          extracted.emv ? `&emv=${encodeURIComponent(extracted.emv)}` : ""
+        }`
+      : extracted.emv
+        ? `https://pay.bimpay.bb/p?emv=${encodeURIComponent(extracted.emv)}`
+        : "";
+  }
+
+  void resolvePaymentIntent();
+}, []);
 
   const validFields = fields.filter(isTlvField);
   const parseErrors = fields.length - validFields.length;
