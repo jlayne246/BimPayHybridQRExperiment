@@ -448,7 +448,7 @@ export default function ResolverPage() {
 
   // const codeReader = new BrowserMultiFormatReader();
 
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   let deepLink = "";
 
@@ -618,7 +618,7 @@ export default function ResolverPage() {
       const emv = url.searchParams.get("emv");
 
       if (token || emv) {
-        navigate(`${url.pathname}${url.search}`);
+        // navigate(`${url.pathname}${url.search}`);
       }
     } catch {
       // Raw EMV payload. setInput(value) is enough.
