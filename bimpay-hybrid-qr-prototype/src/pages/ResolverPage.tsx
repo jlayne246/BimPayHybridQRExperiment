@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import jsQR from "jsqr";
 import {
   BrowserMultiFormatReader,
@@ -447,11 +447,11 @@ export default function ResolverPage() {
 
   const navigate = useNavigate();
 
-  const [searchParams] = useSearchParams();
-  // const { token } = useParams();
+  const currentUrl = new URL(window.location.href);
 
-  const emvQuery = searchParams.get("emv");
-  const tokenQuery = searchParams.get("t");
+  const emvQuery = currentUrl.searchParams.get("emv");
+  const tokenQuery =
+    currentUrl.searchParams.get("t") ?? currentUrl.searchParams.get("token");
 
   useEffect(() => {
     async function resolvePaymentIntent(): Promise<void> {
@@ -517,7 +517,7 @@ export default function ResolverPage() {
     }
 
     void resolvePaymentIntent();
-  }, [tokenQuery, emvQuery]);
+  }, []);
 
   const deepLink = tokenQuery
   ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(tokenQuery)}${
