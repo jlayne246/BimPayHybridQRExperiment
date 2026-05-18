@@ -4,7 +4,11 @@
   "devCommand": "npm run dev",
   "rewrites": [
     {
-      "source": "/((?!api/.*).*)",
+      "source": "/pay",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/create",
       "destination": "/index.html"
     }
   ]

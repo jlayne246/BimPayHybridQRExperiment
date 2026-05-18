@@ -423,6 +423,9 @@ export default function ResolverPage() {
   console.log("ResolverPage mounted");
   console.log("Current URL:", window.location.href);
 
+  console.log("window.location.href:", window.location.href);
+  console.log("window.location.search:", window.location.search);
+
   const [input, setInput] = useState<string>(SAMPLE_LINK);
   const [scanMessage, setScanMessage] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -447,7 +450,7 @@ export default function ResolverPage() {
 
   const navigate = useNavigate();
 
-  var deepLink = "";
+  let deepLink = "";
 
   useEffect(() => {
   async function resolvePaymentIntent(): Promise<void> {
