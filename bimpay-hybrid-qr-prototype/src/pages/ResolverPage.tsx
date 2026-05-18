@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import jsQR from "jsqr";
 import {
   BrowserMultiFormatReader,
@@ -7,8 +6,8 @@ import {
 } from "@zxing/browser";
 
 type ExtractMode = "empty" | "raw-emv" | "payment-link";
-
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
+type CameraMode = "user" | "environment";
 
 interface TlvField {
   tag: string;
@@ -28,10 +27,6 @@ interface TlvParseError {
   lengthText?: string;
   declaredLength?: number;
 }
-
-// type ExtendedMediaTrackConstraints = MediaTrackConstraints & {
-//   focusMode?: ConstrainDOMString;
-// };
 
 type TlvItem = TlvField | TlvParseError;
 
@@ -63,10 +58,18 @@ interface PaymentSummary {
   reference: string;
 }
 
+interface PaymentLinkRecord {
+  token: string;
+  emvPayload: string;
+  createdAt: string;
+  expiresAt: string;
+  isActive: boolean;
+}
+
 const SAMPLE_EMV =
   "00020101021126780014bb.org.cb.mpqr0108TESTROC10208TESTROC103153000002075787870405333331104QRBB52044111530305254043.505802BB5910Sample Bus6010Bridgetown62120808Bus fare80360014bb.org.cb.mpqr01142026051609300063044C51";
 
-const SAMPLE_LINK = `https://pay.bimpay.bb/pay/test?emv=${encodeURIComponent(SAMPLE_EMV)}`;
+const SAMPLE_LINK = `https://pay.bimpay.bb/p?emv=${encodeURIComponent(SAMPLE_EMV)}`;
 
 const TAG_NAMES: Record<string, string> = {
   "00": "Payload Format Indicator",
@@ -152,11 +155,10 @@ function crc16CcittFalse(input: string): string {
     crc ^= input.charCodeAt(i) << 8;
 
     for (let bit = 0; bit < 8; bit += 1) {
-      if ((crc & 0x8000) !== 0) {
-        crc = ((crc << 1) ^ 0x1021) & 0xffff;
-      } else {
-        crc = (crc << 1) & 0xffff;
-      }
+      crc =
+        (crc & 0x8000) !== 0
+          ? ((crc << 1) ^ 0x1021) & 0xffff
+          : (crc << 1) & 0xffff;
     }
   }
 
@@ -199,17 +201,16 @@ function extractPayload(input: string): ExtractedPayload {
       emv: "",
       link: "",
       token: "",
-      error: "Paste a raw EMV payload or a payment link.",
+      error: "Paste a raw EMV payload, tokenized payment link, or embedded EMV link.",
     };
   }
 
   try {
     const url = new URL(trimmed);
     const emvParam = url.searchParams.get("emv");
-    const tokenParam = url.searchParams.get("t");
     const payloadParam = url.searchParams.get("payload");
     const codeParam = url.searchParams.get("code");
-    // const token = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
+    const tokenParam = url.searchParams.get("t") ?? url.searchParams.get("token");
 
     return {
       mode: "payment-link",
@@ -217,7 +218,10 @@ function extractPayload(input: string): ExtractedPayload {
       link: trimmed,
       emv: emvParam ?? payloadParam ?? codeParam ?? "",
       token: tokenParam ?? "",
-      error: emvParam || payloadParam || codeParam || tokenParam ? "" : "No emv, payload, or code query parameter found.",
+      error:
+        emvParam || payloadParam || codeParam || tokenParam
+          ? ""
+          : "No emv, payload, code, t, or token query parameter found.",
     };
   } catch {
     return {
@@ -238,9 +242,7 @@ function parseNestedField(field: TlvField): TlvItem[] {
     "80", "81", "82", "83", "84", "85", "86", "87", "88", "89", "90", "91", "92", "93", "94", "95", "96", "97", "98", "99",
   ]);
 
-  if (!nestedTags.has(field.tag)) return [];
-
-  return parseTlv(field.value);
+  return nestedTags.has(field.tag) ? parseTlv(field.value) : [];
 }
 
 function summarizePayment(fields: TlvItem[]): PaymentSummary {
@@ -251,7 +253,8 @@ function summarizePayment(fields: TlvItem[]): PaymentSummary {
   const additionalFields = additionalData ? parseTlv(additionalData.value).filter(isTlvField) : [];
 
   return {
-    initiationMethod: get("01") === "11" ? "Static" : get("01") === "12" ? "Dynamic" : get("01") || "Unknown",
+    initiationMethod:
+      get("01") === "11" ? "Static" : get("01") === "12" ? "Dynamic" : get("01") || "Unknown",
     merchantName: get("59"),
     city: get("60"),
     country: get("58"),
@@ -302,6 +305,16 @@ function modeTone(mode: ExtractMode): BadgeTone {
     default:
       return "warning";
   }
+}
+
+function getCameraByMode(devices: MediaDeviceInfo[], mode: CameraMode): MediaDeviceInfo | undefined {
+  return (
+    devices.find((device) =>
+      mode === "environment"
+        ? /back|rear|environment/i.test(device.label)
+        : /front|user|face/i.test(device.label)
+    ) ?? devices[0]
+  );
 }
 
 interface StatCardProps {
@@ -394,7 +407,7 @@ function FieldCard({ field }: FieldCardProps) {
               if (!isTlvField(sub)) {
                 return (
                   <div key={`${field.tag}-error-${index}`} className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-800">
-                    <div className="font-semibold text-sm">Nested Parse Error</div>
+                    <div className="text-sm font-semibold">Nested Parse Error</div>
                     <div className="text-xs">{sub.error}</div>
                   </div>
                 );
@@ -403,7 +416,7 @@ function FieldCard({ field }: FieldCardProps) {
               return (
                 <div key={`${field.tag}-${sub.tag}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-semibold text-sm text-slate-950">
+                    <div className="text-sm font-semibold text-slate-950">
                       <span className="font-mono text-slate-500">{field.tag}.{sub.tag}</span> — {sub.name}
                     </div>
                     <span className="text-xs text-slate-500">Len {sub.length}</span>
@@ -420,138 +433,152 @@ function FieldCard({ field }: FieldCardProps) {
 }
 
 export default function ResolverPage() {
-  console.log("ResolverPage mounted");
-  console.log("Current URL:", window.location.href);
-
-  console.log("window.location.href:", window.location.href);
-  console.log("window.location.search:", window.location.search);
-
   const [input, setInput] = useState<string>(SAMPLE_LINK);
   const [scanMessage, setScanMessage] = useState<string>("");
+  const [resolvedToken, setResolvedToken] = useState<string>(() => {
+    return sessionStorage.getItem("resolvedPaymentToken") ?? "";
+  });
+  const [facingMode] = useState<CameraMode>("environment");
+  const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const scanCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animationRef = useRef<number | null>(null);
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const scannerControlsRef = useRef<IScannerControls | null>(null);
-
-  const [facingMode] = useState<"user" | "environment">(
-    "environment"
-  );
-  const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
+  const resolveTimeoutRef = useRef<number | null>(null);
+  const lastResolvedTokenRef = useRef<string>("");
 
   const extracted = useMemo<ExtractedPayload>(() => extractPayload(input), [input]);
   const fields = useMemo<TlvItem[]>(() => (extracted.emv ? parseTlv(extracted.emv) : []), [extracted.emv]);
   const crc = useMemo<CrcResult | null>(() => (extracted.emv ? validateEmvCrc(extracted.emv) : null), [extracted.emv]);
   const summary = useMemo<PaymentSummary>(() => summarizePayment(fields), [fields]);
 
-  // const codeReader = new BrowserMultiFormatReader();
+  const currentUrl = new URL(window.location.href);
+  const urlToken = currentUrl.searchParams.get("t") ?? currentUrl.searchParams.get("token");
+  const activeToken = firstNonEmpty(
+    extracted.token,
+    urlToken,
+    resolvedToken
+  );
 
-  // const navigate = useNavigate();
+  console.log("Extracted Payload:", extracted);
+  console.log("Parsed TLV Fields:", fields);
+  console.log("CRC Validation:", crc);
+  console.log("Payment Summary:", summary);
+  console.log("Active Token:", activeToken);
+  console.log("URL Token:", urlToken);
+  console.log("Resolved Token:", resolvedToken);
 
-  let deepLink = "";
-
-  useEffect(() => {
-  async function resolvePaymentIntent(): Promise<void> {
-    const currentUrl = new URL(window.location.href);
-
-    const emvQuery = currentUrl.searchParams.get("emv");
-    const tokenQuery =
-      currentUrl.searchParams.get("t") ?? currentUrl.searchParams.get("token");
-
-    console.log("Resolver mounted at:", currentUrl.href);
-    console.log("Token query:", tokenQuery);
-    console.log("EMV query:", emvQuery);
-
-    if (tokenQuery) {
-      try {
-        const apiUrl = `${window.location.origin}/api/payment-links?t=${encodeURIComponent(
-          tokenQuery
-        )}`;
-
-        console.log("Fetching token from:", apiUrl);
-
-        const response = await fetch(apiUrl, {
-          cache: "no-store",
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-        console.log("Fetch status:", response.status);
-
-        const text = await response.text();
-        console.log("Fetch raw response:", text);
-
-        if (!response.ok) {
-          throw new Error(text || "Payment token not found.");
-        }
-
-        const record = JSON.parse(text) as {
-          token: string;
-          emvPayload: string;
-          createdAt: string;
-          isActive: boolean;
-          expiresAt: string;
-        };
-
-        console.log("Resolved record:", record);
-
-        setInput(record.emvPayload);
-        setScanMessage(
-          `Payment token resolved successfully. Token expires at ${new Date(
-            record.expiresAt
-          ).toLocaleTimeString()}`
-        );
-
-        return;
-      } catch (error) {
-        console.error(error);
-
-        if (emvQuery) {
-          setInput(emvQuery);
-          setScanMessage(
-            "Token could not be resolved. Falling back to embedded EMV payload."
-          );
-          return;
-        }
-
-        setScanMessage("Could not resolve payment token.");
-        return;
-      }
-    }
-
-    if (emvQuery) {
-      setInput(emvQuery);
-      setScanMessage("Payment payload resolved from embedded EMV query.");
-    }
-
-    deepLink = tokenQuery
-      ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(tokenQuery)}${
-          extracted.emv ? `&emv=${encodeURIComponent(extracted.emv)}` : ""
-        }`
-      : extracted.emv
-        ? `https://pay.bimpay.bb/p?emv=${encodeURIComponent(extracted.emv)}`
-        : "";
+  function firstNonEmpty(...values: Array<string | null | undefined>): string {
+    return values.find((value) => value?.trim())?.trim() ?? "";
   }
 
-  void resolvePaymentIntent();
-}, []);
+  const hypotheticalUniversalLink = activeToken
+    ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(activeToken)}${
+        extracted.emv ? `&emv=${encodeURIComponent(extracted.emv)}` : ""
+      }`
+    : extracted.emv
+      ? `https://pay.bimpay.bb/p?emv=${encodeURIComponent(extracted.emv)}`
+      : "";
 
   const validFields = fields.filter(isTlvField);
   const parseErrors = fields.length - validFields.length;
 
-  function stopCamera(): void {
-    if (animationRef.current !== null) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
+  function rememberResolvedToken(token: string): void {
+    setResolvedToken(token);
+    sessionStorage.setItem("resolvedPaymentToken", token);
+  }
+
+  function clearResolvedToken(): void {
+    setResolvedToken("");
+    sessionStorage.removeItem("resolvedPaymentToken");
+    lastResolvedTokenRef.current = "";
+  }
+
+  async function resolveTokenToInput(token: string): Promise<void> {
+    const normalizedToken = token.trim();
+
+    if (!normalizedToken) return;
+
+    try {
+      setScanMessage(`Resolving payment token: ${normalizedToken}`);
+
+      const response = await fetch(
+        `${window.location.origin}/api/payment-links?t=${encodeURIComponent(normalizedToken)}`,
+        {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        }
+      );
+
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(text || "Payment token not found.");
+      }
+
+      const record = JSON.parse(text) as PaymentLinkRecord;
+
+      rememberResolvedToken(record.token);
+      lastResolvedTokenRef.current = record.token;
+      setInput(record.emvPayload);
+
+      setScanMessage(
+        `Payment token resolved successfully. Token expires at ${new Date(record.expiresAt).toLocaleTimeString()}`
+      );
+    } catch (error) {
+      console.error(error);
+      setScanMessage("Could not resolve payment token.");
+    }
+  }
+
+  function handleIncomingPayload(value: string): void {
+    const trimmed = value.trim();
+    setInput(value);
+
+    if (!trimmed) {
+      clearResolvedToken();
+      setScanMessage("Input cleared.");
+      return;
     }
 
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+    try {
+      const url = new URL(trimmed);
+      const token = url.searchParams.get("t") ?? url.searchParams.get("token");
+      const emv = url.searchParams.get("emv") ?? url.searchParams.get("payload") ?? url.searchParams.get("code");
+
+      if (token) {
+        void resolveTokenToInput(token);
+        return;
+      }
+
+      if (emv) {
+        clearResolvedToken();
+        setInput(emv);
+        setScanMessage("Embedded EMV payload resolved.");
+        return;
+      }
+
+      setScanMessage("Payment link found, but no token or EMV parameter was present.");
+    } catch {
+      clearResolvedToken();
+      setScanMessage("Raw EMV payload loaded.");
     }
+  }
+
+  function queuePayloadResolution(value: string): void {
+    if (resolveTimeoutRef.current !== null) {
+      window.clearTimeout(resolveTimeoutRef.current);
+    }
+
+    resolveTimeoutRef.current = window.setTimeout(() => {
+      handleIncomingPayload(value);
+    }, 500);
+  }
+
+  function stopCamera(): void {
+    scannerControlsRef.current?.stop();
+    scannerControlsRef.current = null;
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -560,87 +587,7 @@ export default function ResolverPage() {
     setIsCameraOpen(false);
   }
 
-  function scanVideoFrame(): void {
-    const video = videoRef.current;
-    const canvas = scanCanvasRef.current;
-
-    if (!video || !canvas || !isCameraOpen) return;
-
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return;
-
-    if (
-      video.readyState !== video.HAVE_ENOUGH_DATA ||
-      video.videoWidth === 0 ||
-      video.videoHeight === 0
-    ) {
-      animationRef.current = requestAnimationFrame(scanVideoFrame);
-      return;
-    }
-
-    // Scale up the camera frame to help jsQR read dense/custom QR codes
-    const scale = Math.max(1, 1400 / Math.max(video.videoWidth, video.videoHeight));
-
-    canvas.width = Math.floor(video.videoWidth * scale);
-    canvas.height = Math.floor(video.videoHeight * scale);
-
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-
-    const result = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "attemptBoth",
-    });
-
-    if (result?.data) {
-      setInput(result.data);
-      setScanMessage("QR scanned successfully from camera.");
-      stopCamera();
-      return;
-    }
-
-    animationRef.current = requestAnimationFrame(scanVideoFrame);
-  }
-
-  function handleScannedPayload(value: string): void {
-    setInput(value);
-
-    try {
-      console.log("HANDLE PAYLOAD:", value);
-
-      const url = new URL(value);
-
-      console.log("TOKEN:", url.searchParams.get("t"));
-      console.log("EMV:", url.searchParams.get("emv"));
-      console.log("PATH:", `${url.pathname}${url.search}`);
-
-      const token = url.searchParams.get("t") ?? url.searchParams.get("token");
-      const emv = url.searchParams.get("emv");
-
-      if (token || emv) {
-        // navigate(`${url.pathname}${url.search}`);
-      }
-    } catch {
-      // Raw EMV payload. setInput(value) is enough.
-    }
-  }
-
-  function getCameraByMode(
-    devices: MediaDeviceInfo[],
-    mode: "user" | "environment"
-  ): MediaDeviceInfo | undefined {
-    return (
-      devices.find((device) =>
-        mode === "environment"
-          ? /back|rear|environment/i.test(device.label)
-          : /front|user|face/i.test(device.label)
-      ) ?? devices[0]
-    );
-  }
-
-  async function openCameraWithMode(
-    mode: "user" | "environment"
-  ): Promise<void> {
+  async function openCameraWithMode(mode: CameraMode): Promise<void> {
     try {
       setScanMessage("Opening camera...");
 
@@ -651,9 +598,7 @@ export default function ResolverPage() {
         codeReaderRef.current = new BrowserMultiFormatReader();
       }
 
-      const videoInputDevices =
-        await BrowserMultiFormatReader.listVideoInputDevices();
-
+      const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
       const selectedDevice = getCameraByMode(videoInputDevices, mode);
 
       if (!selectedDevice?.deviceId || !videoRef.current) {
@@ -670,16 +615,9 @@ export default function ResolverPage() {
           if (!result) return;
 
           const scanned = result.getText();
-
-          console.log("SCANNED:", scanned);
-
-          handleScannedPayload(scanned);
-
+          handleIncomingPayload(scanned);
           setScanMessage("QR scanned successfully.");
-
-          scannerControlsRef.current?.stop();
-          scannerControlsRef.current = null;
-          setIsCameraOpen(false);
+          stopCamera();
         }
       );
 
@@ -687,55 +625,13 @@ export default function ResolverPage() {
     } catch (error) {
       console.error(error);
       setScanMessage("Could not open camera.");
-
-      scannerControlsRef.current?.stop();
-      scannerControlsRef.current = null;
-      setIsCameraOpen(false);
+      stopCamera();
     }
   }
 
   function openCamera(): void {
     void openCameraWithMode(facingMode);
   }
-
-  // function flipCamera(): void {
-  //   const nextMode = facingMode === "environment" ? "user" : "environment";
-
-  //   scannerControlsRef.current?.stop();
-  //   scannerControlsRef.current = null;
-
-  //   setIsCameraOpen(false);
-  //   setFacingMode(nextMode);
-
-  //   window.setTimeout(() => {
-  //     void openCameraWithMode(nextMode);
-  //   }, 150);
-  // }
-
-  // async function refocusCamera(): Promise<void> {
-  //     const currentMode = facingMode;
-  //     stopCamera();
-
-  //     window.setTimeout(() => {
-  //       void openCameraWithMode(currentMode);
-  //     }, 250);
-  //   }
-
-  useEffect(() => {
-    if (isCameraOpen) {
-      animationRef.current = requestAnimationFrame(scanVideoFrame);
-    }
-
-    return () => {
-      if (animationRef.current !== null) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [isCameraOpen]);
-
-  useEffect(() => {
-    return () => stopCamera();
-  }, []);
 
   function handleQrUpload(event: React.ChangeEvent<HTMLInputElement>): void {
     const file = event.target.files?.[0];
@@ -750,10 +646,12 @@ export default function ResolverPage() {
       const context = canvas.getContext("2d", { willReadFrequently: true });
 
       if (!context) {
+        setScanMessage("Could not read image canvas.");
+        URL.revokeObjectURL(img.src);
         return;
       }
 
-      const scale = Math.max(1, 1200 / Math.max(img.width, img.height));
+      const scale = Math.max(1, 1400 / Math.max(img.width, img.height));
 
       canvas.width = Math.floor(img.width * scale);
       canvas.height = Math.floor(img.height * scale);
@@ -763,20 +661,19 @@ export default function ResolverPage() {
       context.drawImage(img, 0, 0, canvas.width, canvas.height);
 
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-
       const result = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: "attemptBoth",
       });
 
+      URL.revokeObjectURL(img.src);
+
       if (!result?.data) {
         setScanMessage("No QR code was found in the uploaded image.");
-        URL.revokeObjectURL(img.src);
         return;
       }
 
-      setInput(result.data);
+      handleIncomingPayload(result.data);
       setScanMessage("QR decoded successfully.");
-      URL.revokeObjectURL(img.src);
     };
 
     img.onerror = () => {
@@ -788,28 +685,51 @@ export default function ResolverPage() {
     event.target.value = "";
   }
 
-  async function showUniversalLink(): Promise<void> {
-    if (!deepLink) {
-      setScanMessage(
-        "No hypothetical universal payment link could be constructed."
-      );
+  async function copyUniversalLink(): Promise<void> {
+    if (!hypotheticalUniversalLink) {
+      setScanMessage("No hypothetical universal payment link could be constructed.");
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(deepLink);
-
-      setScanMessage(
-        `Hypothetical interoperable payment link copied:\n${deepLink}`
-      );
+      await navigator.clipboard.writeText(hypotheticalUniversalLink);
+      setScanMessage(`Hypothetical interoperable payment link copied:\n${hypotheticalUniversalLink}`);
     } catch (error) {
       console.error(error);
-
-      setScanMessage(
-        `Could not copy link automatically:\n${deepLink}`
-      );
+      setScanMessage(`Could not copy link automatically:\n${hypotheticalUniversalLink}`);
     }
   }
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get("t") ?? url.searchParams.get("token");
+    const emv = url.searchParams.get("emv") ?? url.searchParams.get("payload") ?? url.searchParams.get("code");
+
+    if (token) {
+      queueMicrotask(() => {
+        void resolveTokenToInput(token);
+      });
+      return;
+    }
+
+    if (emv) {
+      queueMicrotask(() => {
+        clearResolvedToken();
+        setInput(emv);
+        setScanMessage("Embedded EMV payload resolved from URL.");
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (resolveTimeoutRef.current !== null) {
+        window.clearTimeout(resolveTimeoutRef.current);
+      }
+
+      stopCamera();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-950">
@@ -826,7 +746,7 @@ export default function ResolverPage() {
                 BiMPay Hybrid QR Resolver
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                A TypeScript prototype for resolving camera-readable payment links and legacy raw EMV/RTP QR payloads into a common payment preview and FI deeplink flow.
+                Resolve camera-readable payment links, tokenized links, embedded EMV links, and raw EMV/RTP QR payloads into one payment preview.
               </p>
             </div>
 
@@ -854,31 +774,27 @@ export default function ResolverPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_0.85fr]">
             <SectionCard
               title="Input"
-              description="Paste a payment link, raw EMV payload, or upload a QR image. For camera compatibility, the QR must start with a URL."
+              description="Paste a payment link, tokenized link, embedded EMV link, raw EMV payload, or upload/scan a QR image."
             >
               <div className="space-y-4">
                 <textarea
                   className="h-64 w-full resize-y rounded-2xl border border-slate-300 bg-white p-4 font-mono text-xs leading-5 text-slate-900 shadow-inner outline-none transition focus:border-slate-900 focus:ring-4 focus:ring-slate-200"
                   value={input}
-                  onChange={(event) => setInput(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setInput(value);
+                    queuePayloadResolution(value);
+                  }}
                   spellCheck={false}
                 />
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <button
-                    className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-300"
-                    onClick={() => setInput(SAMPLE_LINK)}
                     type="button"
+                    className="rounded-2xl bg-slate-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-500 focus:outline-none focus:ring-4 focus:ring-slate-200"
+                    onClick={() => handleIncomingPayload(input)}
                   >
-                    Load Link Sample
-                  </button>
-
-                  <button
-                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-950 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-200"
-                    onClick={() => setInput(SAMPLE_EMV)}
-                    type="button"
-                  >
-                    Load Raw EMV
+                    Resolve Input
                   </button>
 
                   <button
@@ -890,49 +806,37 @@ export default function ResolverPage() {
                   </button>
 
                   <button
-                    className="col-span-full w-full rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-200"
+                    className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-200"
                     onClick={isCameraOpen ? stopCamera : openCamera}
                     type="button"
                   >
                     {isCameraOpen ? "Stop Camera" : "Open Camera Scanner"}
                   </button>
 
-                  {/* <button
-                    className="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-slate-300"
-                    onClick={flipCamera}
+                  <button
+                    className="col-span-full w-full rounded-2xl bg-red-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-red-500 focus:outline-none focus:ring-4 focus:ring-red-200"
+                    onClick={() => {
+                      clearResolvedToken();
+                      setInput("");
+                      setScanMessage("Input cleared.");
+                    }}
                     type="button"
-                    disabled={!isCameraOpen}
                   >
-                    Flip Camera
-                  </button> */}
-                  {/* <button
-                    className="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-amber-500"
-                    onClick={refocusCamera}
-                    type="button"
-                    disabled={!isCameraOpen}
-                  >
-                    Refocus Camera
-                  </button> */}
+                    Clear
+                  </button>
                 </div>
 
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleQrUpload} />
 
                 <div className={`${isCameraOpen ? "block" : "hidden"} overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 p-3 shadow-inner`}>
-                  <video
-                    ref={videoRef}
-                    className="aspect-video w-full rounded-2xl object-cover"
-                    autoPlay
-                    muted
-                    playsInline
-                  />
-                  <canvas ref={scanCanvasRef} className="hidden" />
+                  <video ref={videoRef} className="aspect-video w-full rounded-2xl object-cover" autoPlay muted playsInline />
                   <div className="mt-3 text-center text-xs font-medium text-slate-300">
-                    Point your camera at a QR code. The scan will stop automatically once a code is detected.
+                    Point your camera at a QR code. The scan stops automatically once a code is detected.
                   </div>
                 </div>
 
                 {scanMessage && (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs leading-5 text-slate-700 break-all">
+                  <div className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs leading-5 text-slate-700 break-all">
                     {scanMessage}
                   </div>
                 )}
@@ -973,7 +877,7 @@ export default function ResolverPage() {
 
                 <button
                   className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-200"
-                  onClick={showUniversalLink}
+                  onClick={copyUniversalLink}
                   type="button"
                 >
                   Copy Universal Payment Link
@@ -982,7 +886,7 @@ export default function ResolverPage() {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mb-2 text-sm font-bold text-slate-950">Hypothetical Universal Payment Link</div>
                   <div className="rounded-xl bg-white p-3 font-mono text-xs leading-5 text-slate-700 break-all shadow-inner">
-                    {deepLink || "—"}
+                    {hypotheticalUniversalLink || "—"}
                   </div>
                 </div>
               </div>
@@ -991,15 +895,15 @@ export default function ResolverPage() {
 
           <SectionCard
             title="Hybrid Compatibility Model"
-            description="The resolver model keeps raw EMV compatibility while allowing camera-readable URLs and FI app routing."
+            description="The resolver model keeps raw EMV compatibility while allowing camera-readable URLs and FI/app routing."
           >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
               {[
-                ["1", "Camera QR", "Top-level URL is detected by the phone camera."],
-                ["2", "Resolver URL", "A web endpoint receives the token or encoded EMV payload."],
+                ["1", "Camera QR", "Top-level URL can be detected by the phone camera."],
+                ["2", "Resolver URL", "A web endpoint receives token or encoded EMV data."],
                 ["3", "Extract EMV", "The resolver normalizes the payment instruction."],
-                ["4", "FI Deeplink", "User is routed into a supported payment app."],
-                ["5", "RTP Payment", "The app submits through the interoperable payment rail."],
+                ["4", "Universal Link", "Apps can intercept a common HTTPS payment intent."],
+                ["5", "RTP Payment", "Final authorization stays inside the FI/payment app."],
               ].map(([number, title, text]) => (
                 <div key={number} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white">{number}</div>
