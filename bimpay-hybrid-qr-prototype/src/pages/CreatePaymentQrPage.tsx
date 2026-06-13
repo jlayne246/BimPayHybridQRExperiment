@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import QRCode from "qrcode";
+import { ExperimentalWarning } from "../components/ExperimentalWarning";
 
 type AmountMode = "variable" | "fixed";
 
@@ -494,6 +495,10 @@ export default function CreatePaymentQrPage() {
           </div>
         </div>
       </header>
+
+      <div className="mt-6">
+        <ExperimentalWarning />
+      </div>
 
       <main className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="space-y-6">

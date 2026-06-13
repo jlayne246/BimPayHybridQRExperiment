@@ -4,6 +4,7 @@ import {
   BrowserMultiFormatReader,
   type IScannerControls,
 } from "@zxing/browser";
+import { ExperimentalWarning } from "../components/ExperimentalWarning";
 
 type ExtractMode = "empty" | "raw-emv" | "payment-link";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -771,6 +772,8 @@ export default function ResolverPage() {
         </header>
 
         <main className="mt-6 space-y-6">
+          <ExperimentalWarning />
+
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_0.85fr]">
             <SectionCard
               title="Input"
