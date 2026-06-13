@@ -26,7 +26,7 @@ export default function App() {
         </Routes>
 
         <footer className="border-t bg-white px-6 py-4 text-center text-sm text-slate-500">
-          BimPay Hybrid QR Prototype - This is a proof of concept for personal exploration and not intended for actual use. <br></br>Not affiliated with BimPay, the Central Bank of Barbados, or any other company.
+          Hybrid EMVCo QR Prototype - This is a proof of concept for personal exploration with respect to possibilities for the BimPay Instant Payments System QR functionality and not intended for actual use. <br></br>Not affiliated with BimPay, the Central Bank of Barbados, or any other company.
           <BuildBadge />
         </footer>
       </div>
