@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-const DEFAULT_PASSWORD = "bimpay-demo-123";
+const DEFAULT_PASSWORD = "BiMPay-demo-123";
 const SESSION_COOKIE = "bimpay_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 

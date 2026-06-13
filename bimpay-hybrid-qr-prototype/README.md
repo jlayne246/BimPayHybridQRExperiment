@@ -5,18 +5,7 @@
 The site and payment-link APIs are protected by a password and an HTTP-only
 session cookie.
 
-The default password is:
-
-```text
-bimpay-demo
-```
-
-Set these environment variables before deploying to replace the defaults:
-
-```text
-SITE_PASSWORD=choose-a-strong-password
-SESSION_SECRET=choose-a-long-random-secret
-```
+Please contact the developer for the default password.
 
 Sessions last for eight hours. Run both `npm run api` and `npm run dev` for
 local development.

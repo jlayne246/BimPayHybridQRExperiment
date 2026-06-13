@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 const app = express();
 const port = 5050;
 
-const defaultPassword = "bimpay-demo-123";
+const defaultPassword = "BiMPay-demo-123";
 const sitePassword = process.env.SITE_PASSWORD || defaultPassword;
 const sessionSecret =
   process.env.SESSION_SECRET || `${sitePassword}:bimpay-session`;
