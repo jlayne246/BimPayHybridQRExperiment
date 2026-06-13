@@ -37,9 +37,10 @@ const paymentLinks = new Map<string, PaymentLinkRecord>();
 
 function isSandboxPayload(payload: string): boolean {
   return (
-    payload.includes("sandbox.invalid") &&
+    payload.includes("bb.org.cb.mpqr") &&
+    payload.includes("QRBB") &&
     payload.includes("TEST") &&
-    !payload.includes("bb.org.cb.mpqr")
+    /040633333[12]/.test(payload)
   );
 }
 

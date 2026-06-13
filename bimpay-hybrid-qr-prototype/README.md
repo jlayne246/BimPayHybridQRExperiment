@@ -1,5 +1,34 @@
 # BiMPay Hybrid QR Prototype
 
+## Workspaces
+
+- **Experimental QR Lab** preserves the field-level generator and scanner/resolver.
+- **Profile Scenario Lab** uses fictional people and merchants to generate situational payment
+  requests and model payer confirmation.
+
+Scenario transactions are browser-session simulations only. They do not change balances, contact
+external financial institutions, or move funds.
+
+The scenario lab also supports custom merchant checkouts and browser-local fictional person
+profiles. Custom people persist in local storage until removed; transaction history remains limited
+to the current browser session.
+
+Merchant scenarios support fixed amounts and payer-entered variable amounts. Before generation, the
+scenario lab validates route pairings, synthetic account references, field lengths, merchant
+category codes, amount behavior, and test-only metadata. Generated requests can move through
+created, scanned, authorized, declined, expired, cancelled, and refunded sandbox states. Authorized
+and refunded simulations include a local receipt view.
+
+Custom merchant profiles can be saved, edited, selected, and removed in local browser storage.
+
+Merchant category selectors share an expanded ISO 18245 MCC catalog. EMV merchant-presented QR
+stores the selected four-digit MCC in tag 52; the category definitions themselves are maintained by
+ISO rather than EMVCo.
+
+Generated sandbox payloads retain the observed BiMPay-oriented values `bb.org.cb.mpqr`, `QRBB`,
+and the historical test routes `TESTROC1`/`333331` and `TESTROC2`/`333332`. Profile names,
+account references, and transaction state remain synthetic.
+
 ## Sign in
 
 The site and payment-link APIs are protected by a password and an HTTP-only

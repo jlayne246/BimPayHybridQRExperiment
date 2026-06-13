@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import QRCode from "qrcode";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
+import { BIMPAY_GUI, BIMPAY_SCHEME } from "../lib/sandboxEmv";
+import { MERCHANT_CATEGORY_OPTIONS } from "../data/merchantCategories";
 
 type AmountMode = "variable" | "fixed";
 
@@ -78,66 +80,20 @@ const CURRENCY_OPTIONS = [
   { value: "951", label: "951 — XCD / East Caribbean Dollar" },
 ];
 
-const MERCHANT_CATEGORY_OPTIONS = [
-  { value: "4111", label: "4111 — Local/Suburban Passenger Transportation" },
-  { value: "4121", label: "4121 — Taxicabs / Limousines" },
-  { value: "4131", label: "4131 — Bus Lines" },
-  { value: "4784", label: "4784 — Tolls / Road Fees" },
-  { value: "5411", label: "5411 — Grocery Stores / Supermarkets" },
-  { value: "5499", label: "5499 — Miscellaneous Food Stores" },
-  { value: "5812", label: "5812 — Eating Places / Restaurants" },
-  { value: "5814", label: "5814 — Fast Food Restaurants" },
-  { value: "5541", label: "5541 — Service Stations" },
-  { value: "5699", label: "5699 — Miscellaneous Apparel" },
-  { value: "7299", label: "7299 — Miscellaneous Personal Services" },
-  { value: "8398", label: "8398 — Charitable / Social Service Organizations" },
-  { value: "9399", label: "9399 — Government Services" },
-  { value: "0000", label: "0000 — Unspecified / Test" },
-];
-
 const FINANCIAL_INSTITUTION_OPTIONS = [
-  { label: "Coral Bay Bank (Fictional)", fiAlias: "TESTCORAL", participantCode: "000001" },
-  { label: "Island Crest Credit Union (Fictional)", fiAlias: "TESTCREST", participantCode: "000002" },
-  { label: "Sunward National Bank (Fictional)", fiAlias: "TESTSUNWARD", participantCode: "000003" },
-  { label: "Harbourlight Finance (Fictional)", fiAlias: "TESTHBLIGHT", participantCode: "000004" },
-  { label: "Mariner Trust Bank (Fictional)", fiAlias: "TESTMARINER", participantCode: "000005" },
-  { label: "Golden Cane Cooperative (Fictional)", fiAlias: "TESTGOLDEN", participantCode: "000006" },
-  { label: "Cobalt Loop Pay (Fictional Fintech)", fiAlias: "TESTCOBALT", participantCode: "000007" },
+  { label: "BiMPay Test Route 1", fiAlias: "TESTROC1", participantCode: "333331" },
+  { label: "BiMPay Test Route 2", fiAlias: "TESTROC2", participantCode: "333332" },
 ];
 
 const BRANCH_OPTIONS: Record<string, Array<{ label: string; value: string }>> = {
-  TESTCORAL: [
-    { label: "Harbour Centre (Fictional)", value: "TESTHARBOR" },
-    { label: "Palm Ridge (Fictional)", value: "TESTPALM" },
+  TESTROC1: [
+    { label: "Test Route 1", value: "TESTROC1" },
   ],
-  TESTCREST: [
-    { label: "Seaview Main (Fictional)", value: "TESTSEAVIEW" },
-    { label: "Cane Garden (Fictional)", value: "TESTCANE" },
-  ],
-  TESTSUNWARD: [
-    { label: "Sunrise Centre (Fictional)", value: "TESTSUNRISE" },
-    { label: "Market Square (Fictional)", value: "TESTMARKET" },
-  ],
-  TESTHBLIGHT: [
-    { label: "Harbour Office (Fictional)", value: "TESTHARBOUR" },
-    { label: "South Point (Fictional)", value: "TESTSOUTH" },
-  ],
-  TESTMARINER: [
-    { label: "Anchor House (Fictional)", value: "TESTANCHOR" },
-    { label: "West Quay (Fictional)", value: "TESTQUAY" },
-  ],
-  TESTGOLDEN: [
-    { label: "Golden Grove (Fictional)", value: "TESTGROVE" },
-    { label: "Valley Service Centre (Fictional)", value: "TESTVALLEY" },
-  ],
-  TESTCOBALT: [
-    { label: "Mobile Wallet Service (Fictional)", value: "TESTWALLET" },
-    { label: "Merchant Payments Service (Fictional)", value: "TESTMERCHANT" },
+  TESTROC2: [
+    { label: "Test Route 2", value: "TESTROC2" },
   ],
 };
 
-const SANDBOX_GUI = "sandbox.invalid";
-const SANDBOX_SCHEME = "TESTQR";
 const SANDBOX_ACCOUNT_REFERENCE = "000000000000000";
 
 function tlv(tag: string, value: string): string {
@@ -221,12 +177,12 @@ export default function CreatePaymentQrPage() {
 
   const [merchantAccountFields, setMerchantAccountFields] =
     useState<MerchantAccountFields>({
-      gui: SANDBOX_GUI,
-      fiAlias: "TESTCORAL",
-      branchAlias: "TESTHARBOR",
+      gui: BIMPAY_GUI,
+      fiAlias: "TESTROC1",
+      branchAlias: "TESTROC1",
       accountReference: SANDBOX_ACCOUNT_REFERENCE,
-      participantCode: "000001",
-      scheme: SANDBOX_SCHEME,
+      participantCode: "333331",
+      scheme: BIMPAY_SCHEME,
     });
 
   const [additionalDataFields, setAdditionalDataFields] = useState<AdditionalDataFields>({
@@ -241,7 +197,7 @@ export default function CreatePaymentQrPage() {
   });
 
   const [privateFields, setPrivateFields] = useState<PrivateFields>({
-    gui: SANDBOX_GUI,
+    gui: BIMPAY_GUI,
     requestTimestamp: "20260516093000",
   });
 
@@ -326,15 +282,20 @@ export default function CreatePaymentQrPage() {
 
   async function generateQrs(): Promise<void> {
     try {
+      const selectedInstitution = FINANCIAL_INSTITUTION_OPTIONS.find(
+        (option) => option.fiAlias === merchantAccountFields.fiAlias
+      );
+      const selectedBranchIsValid = (
+        BRANCH_OPTIONS[merchantAccountFields.fiAlias] ?? []
+      ).some((option) => option.value === merchantAccountFields.branchAlias);
       const sandboxFieldsAreValid =
-        merchantAccountFields.gui === SANDBOX_GUI &&
-        merchantAccountFields.fiAlias.startsWith("TEST") &&
-        merchantAccountFields.branchAlias.startsWith("TEST") &&
+        merchantAccountFields.gui === BIMPAY_GUI &&
+        selectedInstitution?.participantCode === merchantAccountFields.participantCode &&
+        selectedBranchIsValid &&
         /^\d{6,24}$/.test(merchantAccountFields.accountReference) &&
-        /^00000[1-7]$/.test(merchantAccountFields.participantCode) &&
-        merchantAccountFields.scheme === SANDBOX_SCHEME &&
+        merchantAccountFields.scheme === BIMPAY_SCHEME &&
         coreFields.merchantName.toUpperCase().includes("TEST") &&
-        privateFields.gui === SANDBOX_GUI;
+        privateFields.gui === BIMPAY_GUI;
 
       if (!sandboxFieldsAreValid) {
         setMessage(
@@ -446,12 +407,12 @@ export default function CreatePaymentQrPage() {
     });
 
     setMerchantAccountFields({
-      gui: SANDBOX_GUI,
-      fiAlias: "TESTCORAL",
-      branchAlias: "TESTHARBOR",
+      gui: BIMPAY_GUI,
+      fiAlias: "TESTROC1",
+      branchAlias: "TESTROC1",
       accountReference: SANDBOX_ACCOUNT_REFERENCE,
-      participantCode: "000001",
-      scheme: SANDBOX_SCHEME,
+      participantCode: "333331",
+      scheme: BIMPAY_SCHEME,
     });
 
     setAdditionalDataFields({
@@ -466,7 +427,7 @@ export default function CreatePaymentQrPage() {
     });
 
     setPrivateFields({
-      gui: SANDBOX_GUI,
+      gui: BIMPAY_GUI,
       requestTimestamp: generateTimestamp(),
     });
 

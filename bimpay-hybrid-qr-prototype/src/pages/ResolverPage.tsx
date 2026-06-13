@@ -5,6 +5,7 @@ import {
   type IScannerControls,
 } from "@zxing/browser";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
+import { buildSandboxEmvPayload } from "../lib/sandboxEmv";
 
 type ExtractMode = "empty" | "raw-emv" | "payment-link";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -67,8 +68,17 @@ interface PaymentLinkRecord {
   isActive: boolean;
 }
 
-const SAMPLE_EMV =
-  "00020101021126850015sandbox.invalid0109TESTCORAL0210TESTHARBOR031500000000000000004060000011006TESTQR5204000053030525403***5802BB5909TEST ONLY6007SANDBOX62130809TEST ONLY80370015sandbox.invalid0114202606130000006304824F";
+const SAMPLE_EMV = buildSandboxEmvPayload({
+  recipientName: "Test Seabreeze Cafe",
+  city: "Bridgetown",
+  accountReference: "200000000000001",
+  participantCode: "333331",
+  financialInstitutionAlias: "TESTROC1",
+  branchAlias: "TESTROC1",
+  merchantCategoryCode: "5814",
+  amount: "18.75",
+  reference: "TEST COUNTER ORDER",
+});
 
 const SAMPLE_LINK = `https://sandbox.invalid/pay?emv=${encodeURIComponent(SAMPLE_EMV)}`;
 
