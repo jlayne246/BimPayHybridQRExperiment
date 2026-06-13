@@ -96,23 +96,49 @@ const MERCHANT_CATEGORY_OPTIONS = [
 ];
 
 const FINANCIAL_INSTITUTION_OPTIONS = [
-  { label: "Test Institution 1", fiAlias: "TESTBANK1", participantCode: "000001" },
-  { label: "Test Institution 2", fiAlias: "TESTBANK2", participantCode: "000002" },
+  { label: "Coral Bay Bank (Fictional)", fiAlias: "TESTCORAL", participantCode: "000001" },
+  { label: "Island Crest Credit Union (Fictional)", fiAlias: "TESTCREST", participantCode: "000002" },
+  { label: "Sunward National Bank (Fictional)", fiAlias: "TESTSUNWARD", participantCode: "000003" },
+  { label: "Harbourlight Finance (Fictional)", fiAlias: "TESTHBLIGHT", participantCode: "000004" },
+  { label: "Mariner Trust Bank (Fictional)", fiAlias: "TESTMARINER", participantCode: "000005" },
+  { label: "Golden Cane Cooperative (Fictional)", fiAlias: "TESTGOLDEN", participantCode: "000006" },
+  { label: "Cobalt Loop Pay (Fictional Fintech)", fiAlias: "TESTCOBALT", participantCode: "000007" },
 ];
 
 const BRANCH_OPTIONS: Record<string, Array<{ label: string; value: string }>> = {
-  TESTBANK1: [
-    { label: "Test Service 1", value: "TESTMAIN1" },
-    { label: "Test Service 2", value: "TESTALT1" },
+  TESTCORAL: [
+    { label: "Harbour Centre (Fictional)", value: "TESTHARBOR" },
+    { label: "Palm Ridge (Fictional)", value: "TESTPALM" },
   ],
-  TESTBANK2: [
-    { label: "Test Service 1", value: "TESTMAIN2" },
-    { label: "Test Service 2", value: "TESTALT2" },
+  TESTCREST: [
+    { label: "Seaview Main (Fictional)", value: "TESTSEAVIEW" },
+    { label: "Cane Garden (Fictional)", value: "TESTCANE" },
+  ],
+  TESTSUNWARD: [
+    { label: "Sunrise Centre (Fictional)", value: "TESTSUNRISE" },
+    { label: "Market Square (Fictional)", value: "TESTMARKET" },
+  ],
+  TESTHBLIGHT: [
+    { label: "Harbour Office (Fictional)", value: "TESTHARBOUR" },
+    { label: "South Point (Fictional)", value: "TESTSOUTH" },
+  ],
+  TESTMARINER: [
+    { label: "Anchor House (Fictional)", value: "TESTANCHOR" },
+    { label: "West Quay (Fictional)", value: "TESTQUAY" },
+  ],
+  TESTGOLDEN: [
+    { label: "Golden Grove (Fictional)", value: "TESTGROVE" },
+    { label: "Valley Service Centre (Fictional)", value: "TESTVALLEY" },
+  ],
+  TESTCOBALT: [
+    { label: "Mobile Wallet Service (Fictional)", value: "TESTWALLET" },
+    { label: "Merchant Payments Service (Fictional)", value: "TESTMERCHANT" },
   ],
 };
 
 const SANDBOX_GUI = "sandbox.invalid";
 const SANDBOX_SCHEME = "TESTQR";
+const SANDBOX_ACCOUNT_REFERENCE = "000000000000000";
 
 function tlv(tag: string, value: string): string {
   const normalized = value.trim();
@@ -196,9 +222,9 @@ export default function CreatePaymentQrPage() {
   const [merchantAccountFields, setMerchantAccountFields] =
     useState<MerchantAccountFields>({
       gui: SANDBOX_GUI,
-      fiAlias: "TESTBANK1",
-      branchAlias: "TESTMAIN1",
-      accountReference: "TEST-ONLY-NO-ACCOUNT",
+      fiAlias: "TESTCORAL",
+      branchAlias: "TESTHARBOR",
+      accountReference: SANDBOX_ACCOUNT_REFERENCE,
       participantCode: "000001",
       scheme: SANDBOX_SCHEME,
     });
@@ -304,15 +330,15 @@ export default function CreatePaymentQrPage() {
         merchantAccountFields.gui === SANDBOX_GUI &&
         merchantAccountFields.fiAlias.startsWith("TEST") &&
         merchantAccountFields.branchAlias.startsWith("TEST") &&
-        merchantAccountFields.accountReference.startsWith("TEST") &&
-        /^00000[12]$/.test(merchantAccountFields.participantCode) &&
+        /^\d{6,24}$/.test(merchantAccountFields.accountReference) &&
+        /^00000[1-7]$/.test(merchantAccountFields.participantCode) &&
         merchantAccountFields.scheme === SANDBOX_SCHEME &&
         coreFields.merchantName.toUpperCase().includes("TEST") &&
         privateFields.gui === SANDBOX_GUI;
 
       if (!sandboxFieldsAreValid) {
         setMessage(
-          "Generation blocked. Routing, account, merchant, scheme, and GUI values must remain clearly marked as test-only sandbox data."
+          "Generation blocked. Use a 6-24 digit synthetic account reference and keep all routing, merchant, scheme, and GUI values marked as test-only sandbox data."
         );
         return;
       }
@@ -421,9 +447,9 @@ export default function CreatePaymentQrPage() {
 
     setMerchantAccountFields({
       gui: SANDBOX_GUI,
-      fiAlias: "TESTBANK1",
-      branchAlias: "TESTMAIN1",
-      accountReference: "TEST-ONLY-NO-ACCOUNT",
+      fiAlias: "TESTCORAL",
+      branchAlias: "TESTHARBOR",
+      accountReference: SANDBOX_ACCOUNT_REFERENCE,
       participantCode: "000001",
       scheme: SANDBOX_SCHEME,
     });
@@ -607,7 +633,12 @@ export default function CreatePaymentQrPage() {
                 helper="Sample branch/service alias for the selected FI."
               />
 
-              <Field label="26.03 Account / Merchant Reference" value={merchantAccountFields.accountReference} onChange={(value) => updateMerchant("accountReference", value)} />
+              <Field
+                label="26.03 Account / Merchant Reference"
+                value={merchantAccountFields.accountReference}
+                onChange={(value) => updateMerchant("accountReference", value)}
+                helper="Synthetic numeric value only, 6-24 digits. Do not enter a real account number."
+              />
 
               <ReadOnlyField
                 label="26.04 Participant Code"
