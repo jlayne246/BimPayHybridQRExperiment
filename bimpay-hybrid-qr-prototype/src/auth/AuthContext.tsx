@@ -8,6 +8,7 @@ import { AuthContext } from "./auth-context";
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, acceptedTerms }),
       });
 
       if (!response.ok) {
@@ -102,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               Sign in to continue
             </h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Enter the site password to access the Hybrid QR prototype.
+              Enter the site password and accept the experimental-use terms to continue.
             </p>
           </div>
 
@@ -126,6 +127,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               />
             </div>
 
+            <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+              <input
+                className="mt-1 h-4 w-4 shrink-0 accent-slate-950"
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(event) => setAcceptedTerms(event.target.checked)}
+                required
+              />
+              <span>
+                I understand that this is an independent, unofficial experimental sandbox. I
+                will not use its QR codes for real transactions, and I accept the stated
+                limitations and assumption of risk to the extent permitted by applicable law.
+              </span>
+            </label>
+
             {error && (
               <div
                 className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800"
@@ -138,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             <button
               className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !acceptedTerms}
             >
               {submitting ? "Signing in..." : "Sign in"}
             </button>

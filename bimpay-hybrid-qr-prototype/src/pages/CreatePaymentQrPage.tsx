@@ -96,56 +96,23 @@ const MERCHANT_CATEGORY_OPTIONS = [
 ];
 
 const FINANCIAL_INSTITUTION_OPTIONS = [
-  { label: "Test Bank 1", fiAlias: "TESTROC1", participantCode: "333331" },
-  { label: "Test Bank 2", fiAlias: "TESTROC2", participantCode: "333332" },
-  { label: "RBC Royal Bank", fiAlias: "RBC", participantCode: "333333" },
-  { label: "Sagicor Bank", fiAlias: "SAGICOR", participantCode: "333334" },
-  { label: "BWU Credit Union", fiAlias: "BWUCU", participantCode: "333335" },
-  { label: "Massy Finance", fiAlias: "MASSY", participantCode: "333336" },
-  { label: "Republic Bank", fiAlias: "REPBANK", participantCode: "333337" },
-  { label: "CIBC Caribbean", fiAlias: "CIBC", participantCode: "333338" },
+  { label: "Test Institution 1", fiAlias: "TESTBANK1", participantCode: "000001" },
+  { label: "Test Institution 2", fiAlias: "TESTBANK2", participantCode: "000002" },
 ];
 
 const BRANCH_OPTIONS: Record<string, Array<{ label: string; value: string }>> = {
-  TESTROC1: [
-    { label: "Test Main 1", value: "TESTROC1" },
-    { label: "Bridgetown Main", value: "BTOWN" },
-    { label: "Warrens Corporate", value: "WARRENS" },
-    { label: "Airport Services", value: "AIRPORT" },
+  TESTBANK1: [
+    { label: "Test Service 1", value: "TESTMAIN1" },
+    { label: "Test Service 2", value: "TESTALT1" },
   ],
-  TESTROC2: [
-    { label: "Test Main 2", value: "TESTROC2" },
-    { label: "South Coast", value: "SCOAST" },
-    { label: "Speightstown", value: "SPEIGHTS" },
-  ],
-  RBC: [
-    { label: "Broad Street", value: "BROADST" },
-    { label: "Warrens", value: "WARRENS" },
-    { label: "Hastings", value: "HASTINGS" },
-  ],
-  SAGICOR: [
-    { label: "Worthing", value: "WORTHING" },
-    { label: "Bridgetown", value: "BTOWN" },
-  ],
-  BWUCU: [
-    { label: "Head Office", value: "HEADOFF" },
-    { label: "Warrens", value: "WARRENS" },
-  ],
-  MASSY: [
-    { label: "Finance HQ", value: "FINHQ" },
-    { label: "Sheraton", value: "SHERATON" },
-  ],
-  REPBANK: [
-    { label: "Broad Street", value: "BROADST" },
-    { label: "Six Roads", value: "SIXROADS" },
-    { label: "Holetown", value: "HOLETOWN" },
-  ],
-  CIBC: [
-    { label: "Warrens", value: "WARRENS" },
-    { label: "Broad Street", value: "BROADST" },
-    { label: "Bridgetown Corporate", value: "BTCORP" },
+  TESTBANK2: [
+    { label: "Test Service 1", value: "TESTMAIN2" },
+    { label: "Test Service 2", value: "TESTALT2" },
   ],
 };
+
+const SANDBOX_GUI = "sandbox.invalid";
+const SANDBOX_SCHEME = "TESTQR";
 
 function tlv(tag: string, value: string): string {
   const normalized = value.trim();
@@ -218,22 +185,22 @@ export default function CreatePaymentQrPage() {
   const [coreFields, setCoreFields] = useState<CoreFields>({
     payloadFormat: "01",
     initiationMethod: "11",
-    merchantCategoryCode: "4111",
+    merchantCategoryCode: "0000",
     currency: "052",
     amount: "3.50",
     country: "BB",
-    merchantName: "Sample Bus",
-    merchantCity: "Bridgetown",
+    merchantName: "TEST ONLY",
+    merchantCity: "SANDBOX",
   });
 
   const [merchantAccountFields, setMerchantAccountFields] =
     useState<MerchantAccountFields>({
-      gui: "bb.org.cb.mpqr",
-      fiAlias: "TESTROC1",
-      branchAlias: "TESTROC1",
-      accountReference: "300000207578787",
-      participantCode: "333331",
-      scheme: "QRBB",
+      gui: SANDBOX_GUI,
+      fiAlias: "TESTBANK1",
+      branchAlias: "TESTMAIN1",
+      accountReference: "TEST-ONLY-NO-ACCOUNT",
+      participantCode: "000001",
+      scheme: SANDBOX_SCHEME,
     });
 
   const [additionalDataFields, setAdditionalDataFields] = useState<AdditionalDataFields>({
@@ -244,11 +211,11 @@ export default function CreatePaymentQrPage() {
     referenceLabel: "",
     customerLabel: "",
     terminalLabel: "",
-    purpose: "Bus fare",
+    purpose: "TEST ONLY",
   });
 
   const [privateFields, setPrivateFields] = useState<PrivateFields>({
-    gui: "bb.org.cb.mpqr",
+    gui: SANDBOX_GUI,
     requestTimestamp: "20260516093000",
   });
 
@@ -333,6 +300,23 @@ export default function CreatePaymentQrPage() {
 
   async function generateQrs(): Promise<void> {
     try {
+      const sandboxFieldsAreValid =
+        merchantAccountFields.gui === SANDBOX_GUI &&
+        merchantAccountFields.fiAlias.startsWith("TEST") &&
+        merchantAccountFields.branchAlias.startsWith("TEST") &&
+        merchantAccountFields.accountReference.startsWith("TEST") &&
+        /^00000[12]$/.test(merchantAccountFields.participantCode) &&
+        merchantAccountFields.scheme === SANDBOX_SCHEME &&
+        coreFields.merchantName.toUpperCase().includes("TEST") &&
+        privateFields.gui === SANDBOX_GUI;
+
+      if (!sandboxFieldsAreValid) {
+        setMessage(
+          "Generation blocked. Routing, account, merchant, scheme, and GUI values must remain clearly marked as test-only sandbox data."
+        );
+        return;
+      }
+
       if (amountMode === "fixed" && !isValidAmount(coreFields.amount)) {
         setMessage("Fixed amount must be a valid number, for example 3.50 or 25.00.");
         return;
@@ -427,21 +411,21 @@ export default function CreatePaymentQrPage() {
     setCoreFields({
       payloadFormat: "01",
       initiationMethod: "11",
-      merchantCategoryCode: "4111",
+      merchantCategoryCode: "0000",
       currency: "052",
       amount: "3.50",
       country: "BB",
-      merchantName: "Sample Bus",
-      merchantCity: "Bridgetown",
+      merchantName: "TEST ONLY",
+      merchantCity: "SANDBOX",
     });
 
     setMerchantAccountFields({
-      gui: "bb.org.cb.mpqr",
-      fiAlias: "TESTROC1",
-      branchAlias: "TESTROC1",
-      accountReference: "300000207578787",
-      participantCode: "333331",
-      scheme: "QRBB",
+      gui: SANDBOX_GUI,
+      fiAlias: "TESTBANK1",
+      branchAlias: "TESTMAIN1",
+      accountReference: "TEST-ONLY-NO-ACCOUNT",
+      participantCode: "000001",
+      scheme: SANDBOX_SCHEME,
     });
 
     setAdditionalDataFields({
@@ -452,11 +436,11 @@ export default function CreatePaymentQrPage() {
       referenceLabel: "",
       customerLabel: "",
       terminalLabel: "",
-      purpose: "Bus fare",
+      purpose: "TEST ONLY",
     });
 
     setPrivateFields({
-      gui: "bb.org.cb.mpqr",
+      gui: SANDBOX_GUI,
       requestTimestamp: generateTimestamp(),
     });
 
@@ -470,9 +454,10 @@ export default function CreatePaymentQrPage() {
       <header className="rounded-[2rem] bg-slate-950 p-8 text-white shadow-xl">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Create BiMPay / EMVCo QR</h1>
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Create Experimental EMVCo QR</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-              Edit EMVCo fields while modelling observed BiMPay behaviour: 54 = *** behaves as variable amount, while a numeric 54 behaves as a fixed payment request.
+              Explore EMVCo-style fields using synthetic test data while modelling independently
+              observed payment-app behaviour. Outputs are deliberately non-production.
             </p>
           </div>
 
@@ -504,7 +489,7 @@ export default function CreatePaymentQrPage() {
         <section className="space-y-6">
           <EditorSection
             title="Payment Behaviour"
-            description="This separates EMVCo initiation semantics from observed BiMPay amount behaviour."
+            description="This separates EMVCo initiation semantics from independently observed payment-app amount behaviour."
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <SelectField
@@ -515,7 +500,7 @@ export default function CreatePaymentQrPage() {
                   { value: "variable", label: "Variable amount — tag 54 = ***" },
                   { value: "fixed", label: "Fixed amount — tag 54 = numeric amount" },
                 ]}
-                helper='Observed BiMPay behaviour: 54 = "***" prompts payer to enter amount.'
+                helper='Observed experimental behaviour: 54 = "***" may prompt for an amount.'
               />
 
               {amountMode === "fixed" && (
@@ -531,7 +516,7 @@ export default function CreatePaymentQrPage() {
                 <ReadOnlyField
                   label="54 Transaction Amount"
                   value="***"
-                  helper="BiMPay appears to treat this sentinel as variable amount."
+                  helper="Some observed payment-app flows appear to treat this sentinel as variable amount."
                 />
               )}
             </div>
@@ -553,7 +538,7 @@ export default function CreatePaymentQrPage() {
                       { value: "11", label: "11 — Static EMVCo" },
                       { value: "12", label: "12 — Dynamic EMVCo" },
                     ]}
-                    helper="EMVCo semantic field. BiMPay amount behaviour appears controlled separately by tag 54."
+                    helper="EMVCo semantic field. Observed amount behaviour may be controlled separately by tag 54."
                   />
                 </>
               )}
@@ -611,7 +596,7 @@ export default function CreatePaymentQrPage() {
                   value: option.fiAlias,
                   label: option.label,
                 }))}
-                helper="Selecting an FI auto-populates its participant code."
+                helper="Only synthetic test institutions are available."
               />
 
               <SelectField
@@ -660,7 +645,7 @@ export default function CreatePaymentQrPage() {
 
           <EditorSection
             title="Tag 80 — Private Template"
-            description="Experimental/private template used to mimic BiMPay-specific metadata."
+            description="Synthetic private template used to explore independently observed metadata structure."
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {advancedMode && <Field label="80.00 GUI" value={privateFields.gui} onChange={(value) => updatePrivate("gui", value)} />}
@@ -685,7 +670,7 @@ export default function CreatePaymentQrPage() {
             onClick={generateQrs}
             className="w-full rounded-3xl bg-slate-950 px-5 py-4 text-sm font-black text-white shadow-lg transition hover:bg-slate-800"
           >
-            Generate QR Codes
+            Generate Test-Only QR Codes
           </button>
 
           {message && (

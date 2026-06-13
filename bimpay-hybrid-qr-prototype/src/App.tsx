@@ -38,7 +38,9 @@ export default function App() {
         </Routes>
 
         <footer className="border-t bg-white px-6 py-4 text-center text-sm text-slate-500">
-          Hybrid EMVCo QR Prototype - This is a proof of concept for personal exploration with respect to possibilities for the BimPay Instant Payments System QR functionality and not intended for actual use. <br></br>Not affiliated with BimPay, the Central Bank of Barbados, or any other company.
+          Hybrid EMVCo QR Prototype - Independent, unofficial, test-only software for personal
+          technical exploration. Not affiliated with or endorsed by BiMPay, the Central Bank
+          of Barbados, EMVCo, any financial institution, or any payment provider.
           <BuildBadge />
         </footer>
       </div>

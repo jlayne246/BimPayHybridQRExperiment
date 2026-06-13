@@ -68,9 +68,9 @@ interface PaymentLinkRecord {
 }
 
 const SAMPLE_EMV =
-  "00020101021126780014bb.org.cb.mpqr0108TESTROC10208TESTROC103153000002075787870405333331104QRBB52044111530305254043.505802BB5910Sample Bus6010Bridgetown62120808Bus fare80360014bb.org.cb.mpqr01142026051609300063044C51";
+  "00020101021126890015sandbox.invalid0109TESTBANK10209TESTMAIN10320TEST-ONLY-NO-ACCOUNT04060000011006TESTQR5204000053030525403***5802BB5909TEST ONLY6007SANDBOX62130809TEST ONLY80370015sandbox.invalid0114202606130000006304D57C";
 
-const SAMPLE_LINK = `https://pay.bimpay.bb/p?emv=${encodeURIComponent(SAMPLE_EMV)}`;
+const SAMPLE_LINK = `https://sandbox.invalid/pay?emv=${encodeURIComponent(SAMPLE_EMV)}`;
 
 const TAG_NAMES: Record<string, string> = {
   "00": "Payload Format Indicator",
@@ -475,11 +475,11 @@ export default function ResolverPage() {
   }
 
   const hypotheticalUniversalLink = activeToken
-    ? `https://pay.bimpay.bb/p?t=${encodeURIComponent(activeToken)}${
+    ? `https://sandbox.invalid/pay?t=${encodeURIComponent(activeToken)}${
         extracted.emv ? `&emv=${encodeURIComponent(extracted.emv)}` : ""
       }`
     : extracted.emv
-      ? `https://pay.bimpay.bb/p?emv=${encodeURIComponent(extracted.emv)}`
+      ? `https://sandbox.invalid/pay?emv=${encodeURIComponent(extracted.emv)}`
       : "";
 
   const validFields = fields.filter(isTlvField);

@@ -13,6 +13,14 @@ type PaymentLinkRecord = {
 
 const TTL_SECONDS = 60 * 15;
 
+function isSandboxPayload(payload: string): boolean {
+  return (
+    payload.includes("sandbox.invalid") &&
+    payload.includes("TEST") &&
+    !payload.includes("bb.org.cb.mpqr")
+  );
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -38,6 +46,12 @@ async function createPaymentLink(req: VercelRequest, res: VercelResponse) {
 
   if (!emvPayload?.trim()) {
     return res.status(400).json({ error: "emvPayload is required." });
+  }
+
+  if (!isSandboxPayload(emvPayload)) {
+    return res.status(400).json({
+      error: "Only clearly marked test-only sandbox payloads may be stored.",
+    });
   }
 
   const token = nanoid(12);

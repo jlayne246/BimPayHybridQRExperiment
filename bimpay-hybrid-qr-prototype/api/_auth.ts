@@ -5,12 +5,22 @@ const DEFAULT_PASSWORD = "BiMPay-demo-123";
 const SESSION_COOKIE = "bimpay_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
+export function authenticationIsConfigured(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" ||
+    Boolean(process.env.SITE_PASSWORD && process.env.SESSION_SECRET)
+  );
+}
+
 function getPassword(): string {
-  return process.env.SITE_PASSWORD || DEFAULT_PASSWORD;
+  return process.env.SITE_PASSWORD || (process.env.NODE_ENV !== "production" ? DEFAULT_PASSWORD : "");
 }
 
 function getSessionSecret(): string {
-  return process.env.SESSION_SECRET || `${getPassword()}:bimpay-session`;
+  return (
+    process.env.SESSION_SECRET ||
+    (process.env.NODE_ENV !== "production" ? `${getPassword()}:bimpay-session` : "")
+  );
 }
 
 function expectedSessionToken(): string {
@@ -44,10 +54,14 @@ function readCookie(req: VercelRequest, name: string): string {
 }
 
 export function passwordIsValid(password: string): boolean {
-  return constantTimeEqual(password, getPassword());
+  return authenticationIsConfigured() && constantTimeEqual(password, getPassword());
 }
 
 export function requestIsAuthenticated(req: VercelRequest): boolean {
+  if (!authenticationIsConfigured()) {
+    return false;
+  }
+
   return constantTimeEqual(
     readCookie(req, SESSION_COOKIE),
     expectedSessionToken()

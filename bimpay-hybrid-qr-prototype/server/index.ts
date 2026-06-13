@@ -7,9 +7,17 @@ const app = express();
 const port = 5050;
 
 const defaultPassword = "BiMPay-demo-123";
-const sitePassword = process.env.SITE_PASSWORD || defaultPassword;
+const productionAuthenticationConfigured = Boolean(
+  process.env.SITE_PASSWORD && process.env.SESSION_SECRET
+);
+const authenticationConfigured =
+  process.env.NODE_ENV !== "production" || productionAuthenticationConfigured;
+const sitePassword =
+  process.env.SITE_PASSWORD ||
+  (process.env.NODE_ENV !== "production" ? defaultPassword : "");
 const sessionSecret =
-  process.env.SESSION_SECRET || `${sitePassword}:bimpay-session`;
+  process.env.SESSION_SECRET ||
+  (process.env.NODE_ENV !== "production" ? `${sitePassword}:bimpay-session` : "");
 const sessionCookie = "bimpay_session";
 const sessionToken = createHmac("sha256", sessionSecret)
   .update(`authenticated:${sitePassword}`)
@@ -26,6 +34,14 @@ type PaymentLinkRecord = {
 };
 
 const paymentLinks = new Map<string, PaymentLinkRecord>();
+
+function isSandboxPayload(payload: string): boolean {
+  return (
+    payload.includes("sandbox.invalid") &&
+    payload.includes("TEST") &&
+    !payload.includes("bb.org.cb.mpqr")
+  );
+}
 
 function constantTimeEqual(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
@@ -50,6 +66,10 @@ function readSessionCookie(cookieHeader = ""): string {
 }
 
 function isAuthenticated(req: express.Request): boolean {
+  if (!authenticationConfigured) {
+    return false;
+  }
+
   return constantTimeEqual(
     readSessionCookie(req.headers.cookie),
     sessionToken
@@ -61,8 +81,21 @@ app.get("/api/auth", (req, res) => {
 });
 
 app.post("/api/auth", (req, res) => {
+  if (!authenticationConfigured) {
+    return res.status(503).json({
+      error: "Authentication is not configured for this deployment.",
+    });
+  }
+
   const password =
     typeof req.body?.password === "string" ? req.body.password : "";
+  const acceptedTerms = req.body?.acceptedTerms === true;
+
+  if (!acceptedTerms) {
+    return res.status(400).json({
+      error: "Acceptance of the experimental-use terms is required.",
+    });
+  }
 
   if (!constantTimeEqual(password, sitePassword)) {
     return res.status(401).json({ error: "Incorrect password." });
@@ -96,6 +129,12 @@ app.post("/api/payment-links", (req, res) => {
 
   if (!emvPayload) {
     return res.status(400).json({ error: "emvPayload is required." });
+  }
+
+  if (!isSandboxPayload(emvPayload)) {
+    return res.status(400).json({
+      error: "Only clearly marked test-only sandbox payloads may be stored.",
+    });
   }
 
   const token = nanoid(10);
