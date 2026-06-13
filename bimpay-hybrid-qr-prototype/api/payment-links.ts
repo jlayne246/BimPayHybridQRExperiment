@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { nanoid } from "nanoid";
+import { requireAuthentication } from "./_auth.js";
 import { getRedisClient } from "./_redis.js";
 
 type PaymentLinkRecord = {
@@ -13,9 +14,13 @@ type PaymentLinkRecord = {
 const TTL_SECONDS = 60 * 15;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+
+  if (!requireAuthentication(req, res)) {
+    return;
+  }
 
   if (req.method === "POST") {
     return createPaymentLink(req, res);

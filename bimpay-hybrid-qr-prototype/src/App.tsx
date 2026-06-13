@@ -2,19 +2,31 @@ import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import ResolverPage from "./pages/ResolverPage";
 import CreatePaymentQrPage from "./pages/CreatePaymentQrPage";
 import { BuildBadge } from "./components/BuildBadge";
+import { useAuth } from "./auth/useAuth";
 
 export default function App() {
+  const { signOut } = useAuth();
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-slate-100">
         <nav className="border-b bg-white px-6 py-4">
-          <div className="mx-auto flex max-w-7xl gap-4">
-            <Link className="font-semibold text-slate-900" to="/">
-              Resolver
-            </Link>
-            <Link className="font-semibold text-slate-900" to="/create">
-              Create QR
-            </Link>
+          <div className="mx-auto flex max-w-7xl items-center gap-4">
+            <div className="flex flex-1 gap-4">
+              <Link className="font-semibold text-slate-900" to="/">
+                Resolver
+              </Link>
+              <Link className="font-semibold text-slate-900" to="/create">
+                Create QR
+              </Link>
+            </div>
+            <button
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700"
+              type="button"
+              onClick={() => void signOut()}
+            >
+              Sign out
+            </button>
           </div>
         </nav>
 

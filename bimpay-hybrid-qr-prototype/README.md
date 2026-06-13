@@ -1,4 +1,27 @@
-# React + TypeScript + Vite
+# BiMPay Hybrid QR Prototype
+
+## Sign in
+
+The site and payment-link APIs are protected by a password and an HTTP-only
+session cookie.
+
+The default password is:
+
+```text
+bimpay-demo
+```
+
+Set these environment variables before deploying to replace the defaults:
+
+```text
+SITE_PASSWORD=choose-a-strong-password
+SESSION_SECRET=choose-a-long-random-secret
+```
+
+Sessions last for eight hours. Run both `npm run api` and `npm run dev` for
+local development.
+
+## Vite template notes
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
