@@ -743,7 +743,7 @@ export default function ResolverPage() {
                 <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold ring-1 ring-white/15">Hybrid Resolver</span>
               </div>
               <h1 className="max-w-3xl text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
-                BiMPay Hybrid QR Resolver
+                Hybrid EMVCo QR Resolver
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
                 Resolve camera-readable payment links, tokenized links, embedded EMV links, and raw EMV/RTP QR payloads into one payment preview.
