@@ -8,6 +8,7 @@ export interface SandboxPaymentRequest {
   merchantCategoryCode: string;
   amount: string;
   reference: string;
+  storeLabel?: string;
   amountMode?: "fixed" | "variable";
   initiationMethod?: "11" | "12";
 }
@@ -25,6 +26,10 @@ export const BIMPAY_SCHEME = "QRBB";
 function tlv(tag: string, value: string): string {
   const normalized = value.trim();
   return `${tag}${normalized.length.toString().padStart(2, "0")}${normalized}`;
+}
+
+function optionalTlv(tag: string, value?: string): string {
+  return value?.trim() ? tlv(tag, value) : "";
 }
 
 function crc16CcittFalse(input: string): string {
@@ -55,6 +60,7 @@ export function buildSandboxEmvPayload(request: SandboxPaymentRequest): string {
   ].join("");
 
   const additionalData = [
+    optionalTlv("03", request.storeLabel?.slice(0, 25)),
     tlv("05", request.reference.slice(0, 25) || "TEST REQUEST"),
     tlv("08", `TEST ONLY ${request.reference}`.slice(0, 25)),
   ].join("");

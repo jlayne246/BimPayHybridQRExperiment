@@ -216,6 +216,7 @@ export default function ScenarioLabPage() {
       branchAlias: recipient.branchAlias,
       merchantCategoryCode:
         recipient.kind === "merchant" ? recipient.merchantCategoryCode : "0000",
+      storeLabel: recipient.kind === "merchant" ? recipient.branchCode : undefined,
       amount,
       amountMode: mode === "interpersonal" ? "fixed" : amountMode,
       reference,
@@ -647,15 +648,20 @@ export default function ScenarioLabPage() {
                   </div>
 
                   {merchantSource === "preset" ? (
-                    <ProfileSelect
-                      label="Merchant"
-                      profiles={MERCHANTS}
-                      value={merchantId}
-                      onChange={(value) => {
-                        setMerchantId(value);
-                        clearGeneratedRequest();
-                      }}
-                    />
+                    <>
+                      <ProfileSelect
+                        label="Merchant"
+                        profiles={MERCHANTS}
+                        value={merchantId}
+                        onChange={(value) => {
+                          setMerchantId(value);
+                          clearGeneratedRequest();
+                        }}
+                      />
+                      {recipient.kind === "merchant" && recipient.settlementModel && (
+                        <MerchantSettlementNotice merchant={recipient} />
+                      )}
+                    </>
                   ) : (
                     <CustomMerchantEditor
                       fields={customMerchant}
@@ -1483,6 +1489,28 @@ function ProfileCard({ profile, role }: { profile: RecipientProfile; role: strin
       <div className="mt-3 text-xs font-bold uppercase tracking-wider text-slate-400">{role}</div>
       <div className="mt-1 font-black text-slate-950">{profile.name}</div>
       <div className="mt-1 text-xs text-slate-500">{profile.financialInstitution}</div>
+      {profile.kind === "merchant" && profile.branchCode && (
+        <div className="mt-1 text-xs font-bold text-indigo-600">
+          Branch {profile.branchCode}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MerchantSettlementNotice({ merchant }: { merchant: MerchantProfile }) {
+  const centralized = merchant.settlementModel === "single-account";
+
+  return (
+    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
+      <div className="font-black">
+        {centralized ? "Centralized settlement" : "Branch-level settlement"}
+      </div>
+      <p className="mt-1 leading-6 text-indigo-800">
+        {centralized
+          ? `${merchant.merchantGroupName} branches share account ${merchant.accountReference}. Store label ${merchant.branchCode} identifies this branch for reconciliation.`
+          : `${merchant.branchName} settles to its own account ${merchant.accountReference}. The branch also appears as a bank-direct business profile in the Wallet Funding Lab.`}
+      </p>
     </div>
   );
 }

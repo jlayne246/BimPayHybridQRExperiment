@@ -38,6 +38,16 @@ Built-in examples include fictional individual, charity, church, and business pr
 catalog is available in both labs. Some organizations and businesses are deliberately bank-direct
 so they can receive a wallet transfer or donation without owning a stored-value wallet.
 
+Multi-branch merchant examples cover both common settlement patterns. Test Harbor Pharmacy branches
+share one centralized settlement account and carry distinct store labels for reconciliation. Test
+Island Home branches use separate bank-direct settlement accounts and therefore maintain independent
+simulated branch balances.
+
+Hybrid and bank-linked wallets can also hold multiple named linked accounts. Each transaction uses
+one explicitly selected account for reloads or bank fallback; the simulator does not silently split
+one payment across several bank accounts. Leah Test, Test Bridgetown Community Church, and Test
+Seabreeze Cafe include checking/operating and savings/reserve examples.
+
 ## Private collaboration with Supabase
 
 The wallet lab can optionally publish its complete wallet/profile/ledger state to an invite-only

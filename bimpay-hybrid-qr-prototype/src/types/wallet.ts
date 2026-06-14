@@ -2,6 +2,16 @@ export type FundingModel = "prepaid" | "bank-linked" | "hybrid" | "bank-direct";
 export type BalanceType = "wallet" | "bank";
 export type ProfileKind = "person" | "business" | "charity" | "church";
 
+export interface WalletFundingSource {
+  id: string;
+  name: string;
+  detail: string;
+  balance: number;
+  priority: number;
+  isDefault: boolean;
+  enabled: boolean;
+}
+
 export interface SimulatedWallet {
   id: string;
   ownerName: string;
@@ -11,6 +21,7 @@ export interface SimulatedWallet {
   bankBalance: number;
   bankName: string;
   bankDetail: string;
+  fundingSources: WalletFundingSource[];
   walletIdentifier: string;
   color: string;
   isCustom: boolean;

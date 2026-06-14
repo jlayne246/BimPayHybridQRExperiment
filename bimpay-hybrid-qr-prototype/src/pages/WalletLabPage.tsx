@@ -16,6 +16,7 @@ import type {
   LedgerEntry,
   ProfileKind,
   SimulatedWallet,
+  WalletFundingSource,
   WalletLabState,
 } from "../types/wallet";
 
@@ -107,23 +108,91 @@ function isBankOnlyModel(model: FundingModel): boolean {
   return model === "bank-linked" || model === "bank-direct";
 }
 
+function makeLegacyFundingSource(
+  walletId: string,
+  name: string,
+  detail: string,
+  balance: number
+): WalletFundingSource {
+  return {
+    id: `${walletId}-primary`,
+    name,
+    detail,
+    balance,
+    priority: 1,
+    isDefault: true,
+    enabled: true,
+  };
+}
+
+function totalFundingSources(sources: WalletFundingSource[]): number {
+  return roundMoney(sources.reduce((total, source) => total + source.balance, 0));
+}
+
+function scaleFundingSources(
+  template: WalletFundingSource[],
+  totalBalance: number
+): WalletFundingSource[] {
+  const templateTotal = totalFundingSources(template);
+  if (template.length === 0) return [];
+  if (templateTotal <= 0) {
+    return template.map((source, index) => ({
+      ...source,
+      balance: index === 0 ? totalBalance : 0,
+    }));
+  }
+
+  let allocated = 0;
+  return template.map((source, index) => {
+    const balance =
+      index === template.length - 1
+        ? roundMoney(totalBalance - allocated)
+        : roundMoney(totalBalance * (source.balance / templateTotal));
+    allocated = roundMoney(allocated + balance);
+    return { ...source, balance };
+  });
+}
+
+function defaultFundingSource(wallet: SimulatedWallet): WalletFundingSource | undefined {
+  return (
+    wallet.fundingSources.find((source) => source.enabled && source.isDefault) ??
+    [...wallet.fundingSources]
+      .filter((source) => source.enabled)
+      .sort((left, right) => left.priority - right.priority)[0]
+  );
+}
+
 function createInitialState(): WalletLabState {
   const now = new Date().toISOString();
   const wallets: SimulatedWallet[] = CATALOG_PROFILES.filter(
     (profile) => profile.wallet
-  ).map((profile) => ({
-    id: profile.id,
-    ownerName: profile.name,
-    profileKind: profile.kind === "merchant" ? "business" : profile.kind,
-    model: profile.wallet!.model,
-    walletBalance: profile.wallet!.walletBalance,
-    bankBalance: profile.wallet!.bankBalance,
-    bankName: profile.wallet!.bankName,
-    bankDetail: profile.wallet!.bankDetail,
-    walletIdentifier: profile.wallet!.walletIdentifier,
-    color: profile.wallet!.walletColor,
-    isCustom: false,
-  }));
+  ).map((profile) => {
+    const wallet = profile.wallet!;
+    const fundingSources =
+      wallet.fundingSources ??
+      [
+        makeLegacyFundingSource(
+          profile.id,
+          wallet.bankName,
+          wallet.bankDetail,
+          wallet.bankBalance
+        ),
+      ];
+    return {
+      id: profile.id,
+      ownerName: profile.name,
+      profileKind: profile.kind === "merchant" ? "business" : profile.kind,
+      model: wallet.model,
+      walletBalance: wallet.walletBalance,
+      bankBalance: totalFundingSources(fundingSources),
+      bankName: wallet.bankName,
+      bankDetail: wallet.bankDetail,
+      fundingSources,
+      walletIdentifier: wallet.walletIdentifier,
+      color: wallet.walletColor,
+      isCustom: false,
+    };
+  });
   const ledger: LedgerEntry[] = wallets.flatMap((wallet) => {
     const entries: LedgerEntry[] = [];
     if (wallet.walletBalance > 0) {
@@ -138,16 +207,14 @@ function createInitialState(): WalletLabState {
         reference: "WALLET-OPEN",
       });
     }
-    if (wallet.bankBalance > 0) {
+    for (const source of wallet.fundingSources) {
+      if (source.balance <= 0) continue;
       entries.push({
-        id: `opening-${wallet.id}-bank`,
+        id: `opening-${wallet.id}-bank-${source.id}`,
         ownerId: wallet.id,
-        title: "Opening linked bank balance",
-        detail:
-          wallet.model === "bank-direct"
-            ? "Direct bank-only funding"
-            : "Fictional linked funding source",
-        amount: wallet.bankBalance,
+        title: "Opening linked account balance",
+        detail: `${source.name} / ${source.detail}`,
+        amount: source.balance,
         balanceType: "bank",
         createdAt: now,
         reference: "BANK-OPEN",
@@ -177,19 +244,50 @@ function loadState(): WalletLabState {
   }
 }
 
-function normalizeState(state: WalletLabState): WalletLabState {
+function normalizeState(
+  state: WalletLabState,
+  addMissingCatalogProfiles = true
+): WalletLabState {
   const baseline = createInitialState();
-  const normalizedWallets = state.wallets.map((wallet, index) => ({
-    ...wallet,
-    profileKind: wallet.profileKind || ("person" as ProfileKind),
-    walletIdentifier:
-      wallet.walletIdentifier || `WLT-TEST-${String(index + 1).padStart(4, "0")}`,
-    color: wallet.color || PROFILE_COLORS[index % PROFILE_COLORS.length].value,
-    isCustom: wallet.isCustom === true,
-  }));
+  const normalizedWallets = state.wallets.map((wallet, index) => {
+    const baselineWallet = baseline.wallets.find((candidate) => candidate.id === wallet.id);
+    const hasLegacyPrimaryOnly =
+      Array.isArray(wallet.fundingSources) &&
+      wallet.fundingSources.length === 1 &&
+      wallet.fundingSources[0].id === `${wallet.id}-primary`;
+    const fundingSources =
+      baselineWallet &&
+      baselineWallet.fundingSources.length > 1 &&
+      (!Array.isArray(wallet.fundingSources) ||
+        wallet.fundingSources.length === 0 ||
+        hasLegacyPrimaryOnly)
+        ? scaleFundingSources(baselineWallet.fundingSources, wallet.bankBalance)
+        : Array.isArray(wallet.fundingSources) && wallet.fundingSources.length > 0
+          ? wallet.fundingSources
+          : [
+              makeLegacyFundingSource(
+                wallet.id,
+                wallet.bankName,
+                wallet.bankDetail,
+                wallet.bankBalance
+              ),
+            ];
+    return {
+      ...wallet,
+      bankBalance: totalFundingSources(fundingSources),
+      fundingSources,
+      profileKind: wallet.profileKind || ("person" as ProfileKind),
+      walletIdentifier:
+        wallet.walletIdentifier || `WLT-TEST-${String(index + 1).padStart(4, "0")}`,
+      color: wallet.color || PROFILE_COLORS[index % PROFILE_COLORS.length].value,
+      isCustom: wallet.isCustom === true,
+    };
+  });
   const walletIds = new Set(normalizedWallets.map((wallet) => wallet.id));
   const ledgerIds = new Set(state.ledger.map((entry) => entry.id));
-  const missingWallets = baseline.wallets.filter((wallet) => !walletIds.has(wallet.id));
+  const missingWallets = addMissingCatalogProfiles
+    ? baseline.wallets.filter((wallet) => !walletIds.has(wallet.id))
+    : [];
   const missingWalletIds = new Set(missingWallets.map((wallet) => wallet.id));
 
   return {
@@ -236,6 +334,10 @@ export default function WalletLabPage() {
   const [transactionBusy, setTransactionBusy] = useState(false);
   const [adjustmentBalanceType, setAdjustmentBalanceType] =
     useState<BalanceType>("wallet");
+  const [fundingSourceId, setFundingSourceId] = useState("");
+  const [newSourceName, setNewSourceName] = useState("");
+  const [newSourceDetail, setNewSourceDetail] = useState("");
+  const [newSourceBalance, setNewSourceBalance] = useState("0.00");
   const pendingRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(
     null
   );
@@ -252,6 +354,9 @@ export default function WalletLabPage() {
     () => lab.ledger.filter((entry) => entry.ownerId === activeWallet.id),
     [activeWallet.id, lab.ledger]
   );
+  const selectedFundingSource =
+    activeWallet.fundingSources.find((source) => source.id === fundingSourceId) ??
+    defaultFundingSource(activeWallet);
   const totalAvailable =
     activeWallet.model === "prepaid"
       ? activeWallet.walletBalance
@@ -347,10 +452,43 @@ export default function WalletLabPage() {
       bankBalance: balances.bankBalance,
       bankName: profileFields.bankName.trim().slice(0, 60) || "Test Bank",
       bankDetail: profileFields.bankDetail.trim().slice(0, 60) || "Test account",
+      fundingSources: existing?.fundingSources ?? [
+        makeLegacyFundingSource(
+          profileId,
+          profileFields.bankName.trim().slice(0, 60) || "Test Bank",
+          profileFields.bankDetail.trim().slice(0, 60) || "Test account",
+          balances.bankBalance
+        ),
+      ],
       walletIdentifier: profileFields.walletIdentifier.trim().slice(0, 40),
       color: profileFields.color,
       isCustom: true,
     };
+    if (!existing) {
+      wallet.bankBalance = totalFundingSources(wallet.fundingSources);
+    } else if (balances.bankBalance !== existing.bankBalance) {
+      const source = defaultFundingSource(wallet);
+      if (source) {
+        const nextSourceBalance = roundMoney(
+          source.balance + balances.bankBalance - existing.bankBalance
+        );
+        if (nextSourceBalance < 0) {
+          setProfileMessage(
+            "That aggregate edit would make the default linked account negative. Adjust individual accounts instead."
+          );
+          return;
+        }
+        wallet.fundingSources = wallet.fundingSources.map((candidate) =>
+          candidate.id === source.id
+            ? {
+                ...candidate,
+                balance: nextSourceBalance,
+              }
+            : candidate
+        );
+        wallet.bankBalance = totalFundingSources(wallet.fundingSources);
+      }
+    }
     const nextWallets = existing
       ? updateWallet(lab.wallets, profileId, wallet)
       : [...lab.wallets, wallet];
@@ -477,6 +615,7 @@ export default function WalletLabPage() {
     if (!nextWallet) return;
 
     setActiveWalletId(walletId);
+    setFundingSourceId(defaultFundingSource(nextWallet)?.id ?? "");
     setRecipientId(lab.wallets.find((wallet) => wallet.id !== walletId)?.id ?? walletId);
     setAction(isBankOnlyModel(nextWallet.model) ? "merchant" : "reload");
     setAmount(isBankOnlyModel(nextWallet.model) ? "12.50" : "25.00");
@@ -489,6 +628,74 @@ export default function WalletLabPage() {
     setAmount(nextAction === "reload" ? "25.00" : "12.50");
     setMessage("");
     setNote("");
+  }
+
+  function addFundingSource(): void {
+    const balance = roundMoney(Number(newSourceBalance));
+    if (!newSourceName.trim() || !Number.isFinite(balance) || balance < 0 || balance > 100000) {
+      setMessage("Enter an account name and a balance from $0.00 to $100,000.00 BBD.");
+      return;
+    }
+    const source: WalletFundingSource = {
+      id: `source-${crypto.randomUUID()}`,
+      name: newSourceName.trim().slice(0, 60),
+      detail: newSourceDetail.trim().slice(0, 60) || "Linked account",
+      balance,
+      priority: activeWallet.fundingSources.length + 1,
+      isDefault: activeWallet.fundingSources.length === 0,
+      enabled: true,
+    };
+    const fundingSources = [...activeWallet.fundingSources, source];
+    persist({
+      ...lab,
+      wallets: updateWallet(lab.wallets, activeWallet.id, {
+        fundingSources,
+        bankBalance: totalFundingSources(fundingSources),
+        bankDetail: `${fundingSources.length} linked accounts`,
+      }),
+    });
+    setFundingSourceId(source.id);
+    setNewSourceName("");
+    setNewSourceDetail("");
+    setNewSourceBalance("0.00");
+    setMessage("Linked funding account added. Publish the workspace to share this change.");
+  }
+
+  function setDefaultFundingSource(sourceId: string): void {
+    const fundingSources = activeWallet.fundingSources.map((source) => ({
+      ...source,
+      isDefault: source.id === sourceId,
+    }));
+    persist({
+      ...lab,
+      wallets: updateWallet(lab.wallets, activeWallet.id, { fundingSources }),
+    });
+    setFundingSourceId(sourceId);
+  }
+
+  function removeFundingSource(sourceId: string): void {
+    if (activeWallet.fundingSources.length <= 1) {
+      setMessage("A wallet must retain at least one linked funding account.");
+      return;
+    }
+    const removed = activeWallet.fundingSources.find((source) => source.id === sourceId);
+    let fundingSources = activeWallet.fundingSources.filter((source) => source.id !== sourceId);
+    if (removed?.isDefault) {
+      fundingSources = fundingSources.map((source, index) => ({
+        ...source,
+        isDefault: index === 0,
+      }));
+    }
+    persist({
+      ...lab,
+      wallets: updateWallet(lab.wallets, activeWallet.id, {
+        fundingSources,
+        bankBalance: totalFundingSources(fundingSources),
+        bankDetail: `${fundingSources.length} linked accounts`,
+      }),
+    });
+    setFundingSourceId(defaultFundingSource({ ...activeWallet, fundingSources })?.id ?? "");
+    setMessage("Linked funding account removed from this sandbox profile.");
   }
 
   function updateWallet(
@@ -521,6 +728,7 @@ export default function WalletLabPage() {
 
   function fundPayment(
     wallet: SimulatedWallet,
+    fundingSource: WalletFundingSource | undefined,
     paymentAmount: number,
     reference: string,
     title: string,
@@ -541,22 +749,37 @@ export default function WalletLabPage() {
     }
 
     if (isBankOnlyModel(wallet.model)) {
-      if (paymentAmount > wallet.bankBalance) return null;
+      if (!fundingSource || paymentAmount > fundingSource.balance) return null;
+      const fundingSources = wallet.fundingSources.map((source) =>
+        source.id === fundingSource.id
+          ? { ...source, balance: roundMoney(source.balance - paymentAmount) }
+          : source
+      );
       return {
         wallet: {
           ...wallet,
-          bankBalance: roundMoney(wallet.bankBalance - paymentAmount),
+          bankBalance: totalFundingSources(fundingSources),
+          fundingSources,
         },
         entries: [
-          addEntry(wallet.id, title, detail, -paymentAmount, "bank", reference),
+          addEntry(
+            wallet.id,
+            title,
+            `${detail} / ${fundingSource.name} / ${fundingSource.detail}`,
+            -paymentAmount,
+            "bank",
+            reference
+          ),
         ],
-        fundingDescription: "linked bank account",
+        fundingDescription: `${fundingSource.name} (${fundingSource.detail})`,
       };
     }
 
-    if (paymentAmount > wallet.walletBalance + wallet.bankBalance) return null;
     const walletPortion = Math.min(paymentAmount, wallet.walletBalance);
     const bankPortion = roundMoney(paymentAmount - walletPortion);
+    if (bankPortion > 0 && (!fundingSource || bankPortion > fundingSource.balance)) {
+      return null;
+    }
     const entries: LedgerEntry[] = [];
     if (walletPortion > 0) {
       entries.push(
@@ -575,25 +798,34 @@ export default function WalletLabPage() {
         addEntry(
           wallet.id,
           title,
-          `${detail} / bank fallback`,
+          `${detail} / ${fundingSource!.name} / ${fundingSource!.detail}`,
           -bankPortion,
           "bank",
           reference
         )
       );
     }
+    const fundingSources =
+      bankPortion > 0
+        ? wallet.fundingSources.map((source) =>
+            source.id === fundingSource!.id
+              ? { ...source, balance: roundMoney(source.balance - bankPortion) }
+              : source
+          )
+        : wallet.fundingSources;
     return {
       wallet: {
         ...wallet,
         walletBalance: roundMoney(wallet.walletBalance - walletPortion),
-        bankBalance: roundMoney(wallet.bankBalance - bankPortion),
+        bankBalance: totalFundingSources(fundingSources),
+        fundingSources,
       },
       entries,
       fundingDescription:
         bankPortion > 0 && walletPortion > 0
-          ? "wallet value plus bank fallback"
+          ? `wallet value plus ${fundingSource!.name}`
           : bankPortion > 0
-            ? "linked bank fallback"
+            ? `${fundingSource!.name} (${fundingSource!.detail})`
             : "stored wallet value",
     };
   }
@@ -602,9 +834,10 @@ export default function WalletLabPage() {
     session: SharedWorkspaceSession
   ): Promise<WalletLabState> {
     const snapshot = await loadSharedWalletState(session.workspaceId);
-    persist(snapshot.state);
+    const normalizedState = normalizeState(snapshot.state, false);
+    persist(normalizedState);
     setSharedSession({ ...session, revision: snapshot.revision });
-    return snapshot.state;
+    return normalizedState;
   }
 
   async function submitSharedTransaction(transactionAmount: number): Promise<void> {
@@ -632,6 +865,7 @@ export default function WalletLabPage() {
       activeWalletId: activeWallet.id,
       recipientId: action === "transfer" ? recipientWallet.id : "",
       merchantId: action === "merchant" ? selectedMerchant.id : "",
+      fundingSourceId: selectedFundingSource?.id ?? "",
       adjustmentBalanceType: action === "adjust" ? adjustmentBalanceType : "",
       transactionAmount,
       detail,
@@ -653,6 +887,7 @@ export default function WalletLabPage() {
               amount: transactionAmount,
               reference,
               idempotencyKey,
+              fundingSourceId: selectedFundingSource?.id,
             })
           : action === "merchant"
             ? await paySharedMerchant({
@@ -663,6 +898,7 @@ export default function WalletLabPage() {
                 detail,
                 reference,
                 idempotencyKey,
+                fundingSourceId: selectedFundingSource?.id,
               })
             : action === "transfer"
               ? await transferSharedWallets({
@@ -673,6 +909,7 @@ export default function WalletLabPage() {
                 detail,
                 reference,
                 idempotencyKey,
+                fundingSourceId: selectedFundingSource?.id,
               })
               : await adjustSharedBalance({
                   workspaceId: sharedSession.workspaceId,
@@ -682,6 +919,7 @@ export default function WalletLabPage() {
                   reason: note.trim() || "Explicit sandbox balance adjustment",
                   reference,
                   idempotencyKey,
+                  fundingSourceId: selectedFundingSource?.id,
                 });
 
       try {
@@ -742,16 +980,22 @@ export default function WalletLabPage() {
         setMessage("A bank-only profile has no stored-value balance to reload.");
         return;
       }
-      if (transactionAmount > activeWallet.bankBalance) {
-        setMessage("The linked test bank account does not have enough available funds.");
+      if (!selectedFundingSource || transactionAmount > selectedFundingSource.balance) {
+        setMessage("The selected linked account does not have enough available funds.");
         return;
       }
 
       const reference = makeReference("TOPUP");
+      const fundingSources = activeWallet.fundingSources.map((source) =>
+        source.id === selectedFundingSource.id
+          ? { ...source, balance: roundMoney(source.balance - transactionAmount) }
+          : source
+      );
       const updatedWallet: SimulatedWallet = {
         ...activeWallet,
         walletBalance: roundMoney(activeWallet.walletBalance + transactionAmount),
-        bankBalance: roundMoney(activeWallet.bankBalance - transactionAmount),
+        bankBalance: totalFundingSources(fundingSources),
+        fundingSources,
       };
       persist({
         wallets: updateWallet(lab.wallets, activeWallet.id, updatedWallet),
@@ -759,7 +1003,7 @@ export default function WalletLabPage() {
           addEntry(
             activeWallet.id,
             "Wallet reloaded",
-            `${activeWallet.bankName} / ${activeWallet.bankDetail}`,
+            `${selectedFundingSource.name} / ${selectedFundingSource.detail}`,
             transactionAmount,
             "wallet",
             reference
@@ -791,6 +1035,7 @@ export default function WalletLabPage() {
       (action === "merchant" ? selectedMerchant.category : "Cross-wallet transfer");
     const funded = fundPayment(
       activeWallet,
+      selectedFundingSource,
       transactionAmount,
       reference,
       title,
@@ -807,9 +1052,21 @@ export default function WalletLabPage() {
     if (action === "transfer") {
       const recipientBalanceType: BalanceType =
         isBankOnlyModel(recipientWallet.model) ? "bank" : "wallet";
+      const recipientSource = defaultFundingSource(recipientWallet);
+      const recipientFundingSources =
+        recipientBalanceType === "bank" && recipientSource
+          ? recipientWallet.fundingSources.map((source) =>
+              source.id === recipientSource.id
+                ? { ...source, balance: roundMoney(source.balance + transactionAmount) }
+                : source
+            )
+          : recipientWallet.fundingSources;
       const recipientUpdates =
         recipientBalanceType === "bank"
-          ? { bankBalance: roundMoney(recipientWallet.bankBalance + transactionAmount) }
+          ? {
+              bankBalance: totalFundingSources(recipientFundingSources),
+              fundingSources: recipientFundingSources,
+            }
           : { walletBalance: roundMoney(recipientWallet.walletBalance + transactionAmount) };
       nextWallets = updateWallet(nextWallets, recipientWallet.id, recipientUpdates);
       nextLedger = [
@@ -1172,7 +1429,9 @@ export default function WalletLabPage() {
               <BalanceValue label="Linked bank" value={activeWallet.bankBalance} />
             </div>
             <div className="mt-5 text-xs text-slate-400">
-              {activeWallet.bankName} / {activeWallet.bankDetail}
+              {activeWallet.fundingSources.length} linked account
+              {activeWallet.fundingSources.length === 1 ? "" : "s"} /{" "}
+              {activeWallet.bankName}
             </div>
             <div className="mt-2 font-mono text-xs text-slate-500">
               {activeWallet.walletIdentifier}
@@ -1188,6 +1447,83 @@ export default function WalletLabPage() {
               <div className="mt-4 rounded-2xl bg-violet-50 p-4 text-sm font-bold leading-6 text-violet-800">
                 A payment larger than the stored balance automatically splits into wallet and
                 linked-bank ledger entries.
+              </div>
+            )}
+          </article>
+
+          <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-black text-slate-950">Linked funding accounts</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              One account is selected per transaction. Payments are never split silently across
+              multiple bank accounts.
+            </p>
+            <div className="mt-4 space-y-3">
+              {activeWallet.fundingSources.map((source) => (
+                <div className="rounded-2xl border border-slate-200 p-4" key={source.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-black text-slate-950">{source.name}</div>
+                      <div className="mt-1 text-xs text-slate-500">{source.detail}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-black text-slate-950">
+                        {formatMoney(source.balance)}
+                      </div>
+                      {source.isDefault && (
+                        <div className="mt-1 text-xs font-black uppercase text-emerald-700">
+                          Default
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {activeWallet.isCustom && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {!source.isDefault && (
+                        <button
+                          className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800"
+                          type="button"
+                          onClick={() => setDefaultFundingSource(source.id)}
+                        >
+                          Make default
+                        </button>
+                      )}
+                      <button
+                        className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-black text-rose-700"
+                        type="button"
+                        onClick={() => removeFundingSource(source.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {activeWallet.isCustom && (
+              <div className="mt-5 space-y-3 border-t border-slate-200 pt-5">
+                <ProfileInput
+                  label="New account name"
+                  value={newSourceName}
+                  onChange={setNewSourceName}
+                />
+                <ProfileInput
+                  label="Account description"
+                  value={newSourceDetail}
+                  onChange={setNewSourceDetail}
+                />
+                <ProfileInput
+                  label="Opening balance (BBD)"
+                  value={newSourceBalance}
+                  inputMode="decimal"
+                  onChange={setNewSourceBalance}
+                />
+                <button
+                  className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white"
+                  type="button"
+                  onClick={addFundingSource}
+                >
+                  Add linked account
+                </button>
               </div>
             )}
           </article>
@@ -1235,16 +1571,48 @@ export default function WalletLabPage() {
           </div>
 
           <div className="mt-6 space-y-5">
-            {action === "merchant" && (
+            {(action === "reload" ||
+              (action !== "adjust" && activeWallet.model !== "prepaid") ||
+              (action === "adjust" && adjustmentBalanceType === "bank")) && (
               <SelectField
-                label="Merchant"
-                value={merchantId}
-                onChange={setMerchantId}
-                options={MERCHANTS.map((merchant) => ({
-                  value: merchant.id,
-                  label: `${merchant.name} - ${merchant.location}`,
-                }))}
+                label="Linked funding account"
+                value={selectedFundingSource?.id ?? ""}
+                onChange={setFundingSourceId}
+                options={activeWallet.fundingSources
+                  .filter((source) => source.enabled)
+                  .sort((left, right) => left.priority - right.priority)
+                  .map((source) => ({
+                    value: source.id,
+                    label: `${source.name} - ${source.detail} (${formatMoney(source.balance)})${source.isDefault ? " - default" : ""}`,
+                  }))}
               />
+            )}
+            {action === "merchant" && (
+              <>
+                <SelectField
+                  label="Merchant"
+                  value={merchantId}
+                  onChange={setMerchantId}
+                  options={MERCHANTS.map((merchant) => ({
+                    value: merchant.id,
+                    label: `${merchant.name} - ${merchant.location}`,
+                  }))}
+                />
+                {selectedMerchant.settlementModel && (
+                  <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
+                    <div className="font-black">
+                      {selectedMerchant.settlementModel === "single-account"
+                        ? "Shared chain settlement account"
+                        : "Dedicated branch settlement account"}
+                    </div>
+                    <p className="mt-1 leading-6 text-cyan-800">
+                      {selectedMerchant.settlementModel === "single-account"
+                        ? `${selectedMerchant.merchantGroupName} uses account ${selectedMerchant.accountReference} for every branch. ${selectedMerchant.branchCode} remains the reconciliation label.`
+                        : `${selectedMerchant.branchName} uses account ${selectedMerchant.accountReference}; its simulated balance is independent from the chain's other branches.`}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
             {action === "transfer" && (
               <SelectField

@@ -1,6 +1,11 @@
 import type { RealtimeChannel, User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
-import type { LedgerEntry, SimulatedWallet, WalletLabState } from "../types/wallet";
+import type {
+  LedgerEntry,
+  SimulatedWallet,
+  WalletFundingSource,
+  WalletLabState,
+} from "../types/wallet";
 
 export interface SharedWorkspace {
   id: string;
@@ -151,13 +156,18 @@ export async function loadSharedWalletState(
   workspaceId: string
 ): Promise<SharedWalletSnapshot> {
   const client = requireSupabase();
-  const [workspaceResult, walletResult, ledgerResult] = await Promise.all([
+  const [workspaceResult, walletResult, fundingResult, ledgerResult] = await Promise.all([
     client.from("workspaces").select("revision").eq("id", workspaceId).single(),
     client
       .from("wallet_profiles")
       .select("*")
       .eq("workspace_id", workspaceId)
       .order("display_order", { ascending: true }),
+    client
+      .from("wallet_funding_sources")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("priority", { ascending: true }),
     client
       .from("ledger_entries")
       .select("*")
@@ -166,21 +176,40 @@ export async function loadSharedWalletState(
   ]);
   if (workspaceResult.error) throw workspaceResult.error;
   if (walletResult.error) throw walletResult.error;
+  if (fundingResult.error) throw fundingResult.error;
   if (ledgerResult.error) throw ledgerResult.error;
 
-  const wallets: SimulatedWallet[] = (walletResult.data ?? []).map((row) => ({
-    id: row.profile_id,
-    ownerName: row.owner_name,
-    profileKind: row.profile_kind ?? "person",
-    model: row.funding_model,
-    walletBalance: Number(row.wallet_balance),
-    bankBalance: Number(row.bank_balance),
-    bankName: row.bank_name,
-    bankDetail: row.bank_detail,
-    walletIdentifier: row.wallet_identifier,
-    color: row.color,
-    isCustom: row.is_custom,
-  }));
+  const sourcesByProfile = new Map<string, WalletFundingSource[]>();
+  for (const row of fundingResult.data ?? []) {
+    const sources = sourcesByProfile.get(row.profile_id) ?? [];
+    sources.push({
+      id: row.source_id,
+      name: row.source_name,
+      detail: row.source_detail,
+      balance: Number(row.balance),
+      priority: Number(row.priority),
+      isDefault: row.is_default,
+      enabled: row.enabled,
+    });
+    sourcesByProfile.set(row.profile_id, sources);
+  }
+  const wallets: SimulatedWallet[] = (walletResult.data ?? []).map((row) => {
+    const fundingSources = sourcesByProfile.get(row.profile_id) ?? [];
+    return {
+      id: row.profile_id,
+      ownerName: row.owner_name,
+      profileKind: row.profile_kind ?? "person",
+      model: row.funding_model,
+      walletBalance: Number(row.wallet_balance),
+      bankBalance: fundingSources.reduce((total, source) => total + source.balance, 0),
+      bankName: row.bank_name,
+      bankDetail: row.bank_detail,
+      fundingSources,
+      walletIdentifier: row.wallet_identifier,
+      color: row.color,
+      isCustom: row.is_custom,
+    };
+  });
   const ledger: LedgerEntry[] = (ledgerResult.data ?? []).map((row) => ({
     id: row.entry_id,
     ownerId: row.owner_profile_id,
@@ -240,13 +269,15 @@ export async function reloadSharedWallet(input: {
   amount: number;
   reference: string;
   idempotencyKey: string;
+  fundingSourceId?: string;
 }): Promise<AtomicWalletResult> {
-  const { data, error } = await requireSupabase().rpc("reload_wallet", {
+  const { data, error } = await requireSupabase().rpc("reload_wallet_from_source", {
     target_workspace_id: input.workspaceId,
     target_profile_id: input.profileId,
     transaction_amount: input.amount,
     transaction_reference: input.reference,
     request_idempotency_key: input.idempotencyKey,
+    target_source_id: input.fundingSourceId,
   });
   if (error) throw error;
   return normalizeAtomicResult(data as Record<string, unknown>);
@@ -260,8 +291,9 @@ export async function paySharedMerchant(input: {
   detail: string;
   reference: string;
   idempotencyKey: string;
+  fundingSourceId?: string;
 }): Promise<AtomicWalletResult> {
-  const { data, error } = await requireSupabase().rpc("pay_merchant", {
+  const { data, error } = await requireSupabase().rpc("pay_merchant_from_source", {
     target_workspace_id: input.workspaceId,
     payer_profile_id: input.payerProfileId,
     transaction_amount: input.amount,
@@ -269,6 +301,7 @@ export async function paySharedMerchant(input: {
     transaction_detail: input.detail,
     transaction_reference: input.reference,
     request_idempotency_key: input.idempotencyKey,
+    target_source_id: input.fundingSourceId,
   });
   if (error) throw error;
   return normalizeAtomicResult(data as Record<string, unknown>);
@@ -282,8 +315,9 @@ export async function transferSharedWallets(input: {
   detail: string;
   reference: string;
   idempotencyKey: string;
+  fundingSourceId?: string;
 }): Promise<AtomicWalletResult> {
-  const { data, error } = await requireSupabase().rpc("transfer_between_wallets", {
+  const { data, error } = await requireSupabase().rpc("transfer_between_wallets_from_source", {
     target_workspace_id: input.workspaceId,
     payer_profile_id: input.payerProfileId,
     recipient_profile_id: input.recipientProfileId,
@@ -291,6 +325,7 @@ export async function transferSharedWallets(input: {
     transaction_detail: input.detail,
     transaction_reference: input.reference,
     request_idempotency_key: input.idempotencyKey,
+    target_source_id: input.fundingSourceId,
   });
   if (error) throw error;
   return normalizeAtomicResult(data as Record<string, unknown>);
@@ -304,8 +339,9 @@ export async function adjustSharedBalance(input: {
   reason: string;
   reference: string;
   idempotencyKey: string;
+  fundingSourceId?: string;
 }): Promise<AtomicWalletResult> {
-  const { data, error } = await requireSupabase().rpc("adjust_sandbox_balance", {
+  const { data, error } = await requireSupabase().rpc("adjust_sandbox_balance_from_source", {
     target_workspace_id: input.workspaceId,
     target_profile_id: input.profileId,
     target_balance_type: input.balanceType,
@@ -313,6 +349,7 @@ export async function adjustSharedBalance(input: {
     adjustment_reason: input.reason,
     transaction_reference: input.reference,
     request_idempotency_key: input.idempotencyKey,
+    target_source_id: input.fundingSourceId,
   });
   if (error) throw error;
   return normalizeAtomicResult(data as Record<string, unknown>);

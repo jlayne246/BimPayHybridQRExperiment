@@ -40,6 +40,10 @@ export interface MerchantProfile {
   financialInstitutionAlias: string;
   branchAlias: string;
   participantCode: string;
+  merchantGroupName?: string;
+  branchName?: string;
+  branchCode?: string;
+  settlementModel?: "single-account" | "branch-accounts";
   wallet?: WalletSeed;
 }
 
@@ -49,8 +53,19 @@ export interface WalletSeed {
   bankBalance: number;
   bankName: string;
   bankDetail: string;
+  fundingSources?: WalletFundingSourceSeed[];
   walletIdentifier: string;
   walletColor: string;
+}
+
+export interface WalletFundingSourceSeed {
+  id: string;
+  name: string;
+  detail: string;
+  balance: number;
+  priority: number;
+  isDefault: boolean;
+  enabled: boolean;
 }
 
 export type AccountProfile = PersonProfile | OrganizationProfile;
@@ -113,9 +128,29 @@ export const PEOPLE: PersonProfile[] = [
     wallet: {
       model: "hybrid",
       walletBalance: 45,
-      bankBalance: 475,
+      bankBalance: 775,
       bankName: "Test Route Bank",
-      bankDetail: "Checking ending 9031",
+      bankDetail: "2 linked accounts",
+      fundingSources: [
+        {
+          id: "leah-checking",
+          name: "Test Route Bank",
+          detail: "Checking ending 9031",
+          balance: 475,
+          priority: 1,
+          isDefault: true,
+          enabled: true,
+        },
+        {
+          id: "leah-savings",
+          name: "Island Savings",
+          detail: "Savings ending 2268",
+          balance: 300,
+          priority: 2,
+          isDefault: false,
+          enabled: true,
+        },
+      ],
       walletIdentifier: "WLT-TEST-9031-7714",
       walletColor: "from-violet-700 to-fuchsia-600",
     },
@@ -158,9 +193,29 @@ export const ORGANIZATIONS: OrganizationProfile[] = [
     wallet: {
       model: "hybrid",
       walletBalance: 75,
-      bankBalance: 1500,
+      bankBalance: 2400,
       bankName: "Test Parish Credit Union",
-      bankDetail: "Organization account ending 7712",
+      bankDetail: "2 linked accounts",
+      fundingSources: [
+        {
+          id: "church-operating",
+          name: "Test Parish Credit Union",
+          detail: "Operating account ending 7712",
+          balance: 1500,
+          priority: 1,
+          isDefault: true,
+          enabled: true,
+        },
+        {
+          id: "church-building",
+          name: "Test Community Bank",
+          detail: "Building fund ending 4480",
+          balance: 900,
+          priority: 2,
+          isDefault: false,
+          enabled: true,
+        },
+      ],
       walletIdentifier: "WLT-CHURCH-7712",
       walletColor: "from-amber-600 to-orange-600",
     },
@@ -208,9 +263,29 @@ export const MERCHANTS: MerchantProfile[] = [
     wallet: {
       model: "hybrid",
       walletBalance: 125,
-      bankBalance: 1800,
+      bankBalance: 3000,
       bankName: "Test Business Bank",
-      bankDetail: "Business account ending 5814",
+      bankDetail: "2 linked accounts",
+      fundingSources: [
+        {
+          id: "cafe-operating",
+          name: "Test Business Bank",
+          detail: "Operating account ending 5814",
+          balance: 1800,
+          priority: 1,
+          isDefault: true,
+          enabled: true,
+        },
+        {
+          id: "cafe-reserve",
+          name: "Test Commercial Bank",
+          detail: "Reserve account ending 9910",
+          balance: 1200,
+          priority: 2,
+          isDefault: false,
+          enabled: true,
+        },
+      ],
       walletIdentifier: "WLT-BUSINESS-5814",
       walletColor: "from-amber-600 to-orange-600",
     },
@@ -261,6 +336,100 @@ export const MERCHANTS: MerchantProfile[] = [
       bankDetail: "Business account ending 4121",
       walletIdentifier: "WLT-BUSINESS-4121",
       walletColor: "from-blue-700 to-indigo-600",
+    },
+  },
+  {
+    id: "harbor-pharmacy-bridgetown",
+    kind: "merchant",
+    name: "Test Harbor Pharmacy - Bridgetown",
+    initials: "HP",
+    color: "bg-cyan-700",
+    category: "Pharmacy",
+    merchantCategoryCode: "5912",
+    location: "Bridgetown",
+    accountReference: "200000000000010",
+    financialInstitution: "Test Route 1",
+    financialInstitutionAlias: "TESTROC1",
+    branchAlias: "TESTROC1",
+    participantCode: "333331",
+    merchantGroupName: "Test Harbor Pharmacy",
+    branchName: "Bridgetown",
+    branchCode: "HP-BGI",
+    settlementModel: "single-account",
+  },
+  {
+    id: "harbor-pharmacy-oistins",
+    kind: "merchant",
+    name: "Test Harbor Pharmacy - Oistins",
+    initials: "HP",
+    color: "bg-cyan-600",
+    category: "Pharmacy",
+    merchantCategoryCode: "5912",
+    location: "Oistins",
+    accountReference: "200000000000010",
+    financialInstitution: "Test Route 1",
+    financialInstitutionAlias: "TESTROC1",
+    branchAlias: "TESTROC1",
+    participantCode: "333331",
+    merchantGroupName: "Test Harbor Pharmacy",
+    branchName: "Oistins",
+    branchCode: "HP-OIS",
+    settlementModel: "single-account",
+  },
+  {
+    id: "island-home-bridgetown",
+    kind: "merchant",
+    name: "Test Island Home - Bridgetown",
+    initials: "IH",
+    color: "bg-indigo-700",
+    category: "Home supply store",
+    merchantCategoryCode: "5211",
+    location: "Bridgetown",
+    accountReference: "200000000000011",
+    financialInstitution: "Test Route 2",
+    financialInstitutionAlias: "TESTROC2",
+    branchAlias: "TESTROC2",
+    participantCode: "333332",
+    merchantGroupName: "Test Island Home",
+    branchName: "Bridgetown",
+    branchCode: "IH-BGI",
+    settlementModel: "branch-accounts",
+    wallet: {
+      model: "bank-direct",
+      walletBalance: 0,
+      bankBalance: 2400,
+      bankName: "Test Commercial Bank",
+      bankDetail: "Bridgetown branch settlement ending 0011",
+      walletIdentifier: "BANK-DIRECT-IH-BGI",
+      walletColor: "from-indigo-800 to-blue-700",
+    },
+  },
+  {
+    id: "island-home-oistins",
+    kind: "merchant",
+    name: "Test Island Home - Oistins",
+    initials: "IH",
+    color: "bg-indigo-600",
+    category: "Home supply store",
+    merchantCategoryCode: "5211",
+    location: "Oistins",
+    accountReference: "200000000000012",
+    financialInstitution: "Test Route 2",
+    financialInstitutionAlias: "TESTROC2",
+    branchAlias: "TESTROC2",
+    participantCode: "333332",
+    merchantGroupName: "Test Island Home",
+    branchName: "Oistins",
+    branchCode: "IH-OIS",
+    settlementModel: "branch-accounts",
+    wallet: {
+      model: "bank-direct",
+      walletBalance: 0,
+      bankBalance: 1750,
+      bankName: "Test Commercial Bank",
+      bankDetail: "Oistins branch settlement ending 0012",
+      walletIdentifier: "BANK-DIRECT-IH-OIS",
+      walletColor: "from-blue-800 to-cyan-700",
     },
   },
 ];
