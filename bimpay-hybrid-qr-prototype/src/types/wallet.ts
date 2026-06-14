@@ -1,6 +1,6 @@
-export type FundingModel = "prepaid" | "bank-linked" | "hybrid";
+export type FundingModel = "prepaid" | "bank-linked" | "hybrid" | "bank-direct";
 export type BalanceType = "wallet" | "bank";
-export type ProfileKind = "person" | "charity" | "church";
+export type ProfileKind = "person" | "business" | "charity" | "church";
 
 export interface SimulatedWallet {
   id: string;

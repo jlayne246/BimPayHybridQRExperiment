@@ -4,7 +4,7 @@ alter table public.workspaces
 
 alter table public.wallet_profiles
   add column if not exists profile_kind text not null default 'person'
-    check (profile_kind in ('person', 'charity', 'church'));
+    check (profile_kind in ('person', 'business', 'charity', 'church'));
 
 drop function if exists public.replace_wallet_lab_state(uuid, jsonb, jsonb);
 

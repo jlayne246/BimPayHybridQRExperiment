@@ -20,7 +20,9 @@ create table if not exists public.wallet_profiles (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   profile_id text not null,
   owner_name text not null check (char_length(owner_name) between 1 and 60),
-  funding_model text not null check (funding_model in ('prepaid', 'bank-linked', 'hybrid')),
+  funding_model text not null check (
+    funding_model in ('prepaid', 'bank-linked', 'hybrid', 'bank-direct')
+  ),
   wallet_balance numeric(12, 2) not null default 0 check (wallet_balance >= 0),
   bank_balance numeric(12, 2) not null default 0 check (bank_balance >= 0),
   bank_name text not null default '',
@@ -33,7 +35,7 @@ create table if not exists public.wallet_profiles (
   updated_at timestamptz not null default now(),
   primary key (workspace_id, profile_id),
   unique (workspace_id, wallet_identifier),
-  check (funding_model <> 'bank-linked' or wallet_balance = 0)
+  check (funding_model not in ('bank-linked', 'bank-direct') or wallet_balance = 0)
 );
 
 create table if not exists public.ledger_entries (

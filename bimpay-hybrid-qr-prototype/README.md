@@ -3,11 +3,11 @@
 ## Workspaces
 
 - **Experimental QR Lab** preserves the field-level generator and scanner/resolver.
-- **Profile Scenario Lab** uses fictional people and merchants to generate situational payment
-  requests and model payer confirmation.
-- **Wallet Funding Lab** compares prepaid, bank-linked, and hybrid wallets. The models can make
-  merchant payments and transfer funds to each other while wallet and linked-bank balances are
-  tracked separately.
+- **Profile Scenario Lab** uses a shared catalog of fictional people, charities, churches, and
+  businesses to generate situational payment requests and model payer confirmation.
+- **Wallet Funding Lab** uses those same profiles to compare prepaid, bank-linked, hybrid, and
+  bank-direct funding. The models can make merchant payments and transfer funds to each other while
+  wallet and linked-bank balances are tracked separately.
 
 Scenario transactions are browser-session simulations only. They do not change balances, contact
 external financial institutions, or move funds.
@@ -26,14 +26,17 @@ Custom merchant profiles can be saved, edited, selected, and removed in local br
 
 Wallet and bank balances are browser-local simulations. Prepaid payments use stored value,
 bank-linked payments debit the simulated linked bank balance, and hybrid payments use stored value
-before falling back to the linked bank balance. Transfers can move between any two funding models.
+before falling back to the linked bank balance. Bank-direct profiles have no stored wallet value,
+which supports wallet-to-bank and bank-to-wallet scenarios. Transfers can move between any two
+funding models.
 
 The wallet lab also supports browser-local custom wallet profiles. Custom profiles can be created,
 edited, cloned, and removed, and can participate in the same merchant payments and cross-model
 transfers as the built-in examples.
 
-Built-in examples include fictional individual, charity, and church profiles. Organization profiles
-can receive wallet transfers or donations, hold simulated balances, and make outgoing payments.
+Built-in examples include fictional individual, charity, church, and business profiles. The same
+catalog is available in both labs. Some organizations and businesses are deliberately bank-direct
+so they can receive a wallet transfer or donation without owning a stored-value wallet.
 
 ## Private collaboration with Supabase
 
@@ -42,7 +45,7 @@ Supabase workspace. Without Supabase environment variables, it remains fully fun
 browser storage.
 
 1. Create a private Supabase project.
-2. Run `supabase/migrations/202606140001_wallet_collaboration.sql` in the Supabase SQL Editor.
+2. Run the SQL files in `supabase/migrations` in filename order in the Supabase SQL Editor.
 3. In Authentication settings, disable public user sign-ups.
 4. Add the deployed site URL and local development URL to the allowed redirect URLs.
 5. Invite each collaborator from the Supabase Authentication dashboard.

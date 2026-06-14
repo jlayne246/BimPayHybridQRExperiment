@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { WalletCollaborationPanel } from "../components/WalletCollaborationPanel";
-import { MERCHANTS, PEOPLE } from "../data/sampleProfiles";
+import { CATALOG_PROFILES, MERCHANTS, PEOPLE } from "../data/sampleProfiles";
 import {
   adjustSharedBalance,
   loadSharedWalletState,
@@ -67,6 +67,10 @@ const PROFILE_KIND_DETAILS: Record<ProfileKind, { label: string; description: st
     label: "Church",
     description: "A fictional faith organization receiving offerings and paying expenses.",
   },
+  business: {
+    label: "Business",
+    description: "A fictional merchant or business account.",
+  },
 };
 
 const MODEL_DETAILS: Record<
@@ -91,160 +95,70 @@ const MODEL_DETAILS: Record<
     description: "Uses stored wallet value first, then the linked bank account for any remainder.",
     badge: "bg-violet-100 text-violet-800",
   },
+  "bank-direct": {
+    label: "Bank-direct profile",
+    shortLabel: "Bank-direct",
+    description: "Has no stored-value wallet; incoming and outgoing funds use the bank account.",
+    badge: "bg-slate-200 text-slate-800",
+  },
 };
+
+function isBankOnlyModel(model: FundingModel): boolean {
+  return model === "bank-linked" || model === "bank-direct";
+}
 
 function createInitialState(): WalletLabState {
   const now = new Date().toISOString();
-  return {
-    wallets: [
-      {
-        id: PEOPLE[0].id,
-        ownerName: PEOPLE[0].name,
-        profileKind: "person",
-        model: "prepaid",
-        walletBalance: 150,
-        bankBalance: 850,
-        bankName: "Test Bank Account",
-        bankDetail: "Checking ending 1184",
-        walletIdentifier: "WLT-TEST-8842-1905",
-        color: "from-emerald-700 to-teal-600",
-        isCustom: false,
-      },
-      {
-        id: PEOPLE[1].id,
-        ownerName: PEOPLE[1].name,
-        profileKind: "person",
-        model: "bank-linked",
-        walletBalance: 0,
-        bankBalance: 620,
-        bankName: "Island Credit Union",
-        bankDetail: "Savings ending 4072",
-        walletIdentifier: "WLT-TEST-4072-2210",
-        color: "from-blue-700 to-indigo-600",
-        isCustom: false,
-      },
-      {
-        id: PEOPLE[2].id,
-        ownerName: PEOPLE[2].name,
-        profileKind: "person",
-        model: "hybrid",
-        walletBalance: 45,
-        bankBalance: 475,
-        bankName: "Test Route Bank",
-        bankDetail: "Checking ending 9031",
-        walletIdentifier: "WLT-TEST-9031-7714",
-        color: "from-violet-700 to-fuchsia-600",
-        isCustom: false,
-      },
-      {
-        id: "hope-relief-fund",
-        ownerName: "Test Hope Relief Fund",
-        profileKind: "charity",
-        model: "prepaid",
-        walletBalance: 300,
-        bankBalance: 1200,
-        bankName: "Test Community Bank",
-        bankDetail: "Charity account ending 2044",
-        walletIdentifier: "WLT-CHARITY-2044",
-        color: "from-rose-700 to-pink-600",
-        isCustom: false,
-      },
-      {
-        id: "bridgetown-community-church",
-        ownerName: "Test Bridgetown Community Church",
-        profileKind: "church",
-        model: "hybrid",
-        walletBalance: 75,
-        bankBalance: 1500,
-        bankName: "Test Parish Credit Union",
-        bankDetail: "Organization account ending 7712",
-        walletIdentifier: "WLT-CHURCH-7712",
-        color: "from-amber-600 to-orange-600",
-        isCustom: false,
-      },
-    ],
-    ledger: [
-      {
-        id: "opening-maya",
-        ownerId: PEOPLE[0].id,
+  const wallets: SimulatedWallet[] = CATALOG_PROFILES.filter(
+    (profile) => profile.wallet
+  ).map((profile) => ({
+    id: profile.id,
+    ownerName: profile.name,
+    profileKind: profile.kind === "merchant" ? "business" : profile.kind,
+    model: profile.wallet!.model,
+    walletBalance: profile.wallet!.walletBalance,
+    bankBalance: profile.wallet!.bankBalance,
+    bankName: profile.wallet!.bankName,
+    bankDetail: profile.wallet!.bankDetail,
+    walletIdentifier: profile.wallet!.walletIdentifier,
+    color: profile.wallet!.walletColor,
+    isCustom: false,
+  }));
+  const ledger: LedgerEntry[] = wallets.flatMap((wallet) => {
+    const entries: LedgerEntry[] = [];
+    if (wallet.walletBalance > 0) {
+      entries.push({
+        id: `opening-${wallet.id}-wallet`,
+        ownerId: wallet.id,
         title: "Opening wallet balance",
-        detail: "Preloaded test value",
-        amount: 150,
+        detail: `Fictional ${wallet.profileKind} stored value`,
+        amount: wallet.walletBalance,
         balanceType: "wallet",
         createdAt: now,
         reference: "WALLET-OPEN",
-      },
-      {
-        id: "opening-andre",
-        ownerId: PEOPLE[1].id,
-        title: "Linked bank balance",
-        detail: "Available through direct bank funding",
-        amount: 620,
+      });
+    }
+    if (wallet.bankBalance > 0) {
+      entries.push({
+        id: `opening-${wallet.id}-bank`,
+        ownerId: wallet.id,
+        title: "Opening linked bank balance",
+        detail:
+          wallet.model === "bank-direct"
+            ? "Direct bank-only funding"
+            : "Fictional linked funding source",
+        amount: wallet.bankBalance,
         balanceType: "bank",
         createdAt: now,
         reference: "BANK-OPEN",
-      },
-      {
-        id: "opening-leah-wallet",
-        ownerId: PEOPLE[2].id,
-        title: "Opening wallet balance",
-        detail: "Hybrid stored value",
-        amount: 45,
-        balanceType: "wallet",
-        createdAt: now,
-        reference: "HYBRID-OPEN",
-      },
-      {
-        id: "opening-leah-bank",
-        ownerId: PEOPLE[2].id,
-        title: "Linked bank balance",
-        detail: "Hybrid fallback funding",
-        amount: 475,
-        balanceType: "bank",
-        createdAt: now,
-        reference: "BANK-OPEN",
-      },
-      {
-        id: "opening-hope-wallet",
-        ownerId: "hope-relief-fund",
-        title: "Opening donation wallet balance",
-        detail: "Fictional charity stored value",
-        amount: 300,
-        balanceType: "wallet",
-        createdAt: now,
-        reference: "CHARITY-OPEN",
-      },
-      {
-        id: "opening-hope-bank",
-        ownerId: "hope-relief-fund",
-        title: "Opening linked bank balance",
-        detail: "Fictional charity funding source",
-        amount: 1200,
-        balanceType: "bank",
-        createdAt: now,
-        reference: "CHARITY-OPEN",
-      },
-      {
-        id: "opening-church-wallet",
-        ownerId: "bridgetown-community-church",
-        title: "Opening offering wallet balance",
-        detail: "Fictional church stored value",
-        amount: 75,
-        balanceType: "wallet",
-        createdAt: now,
-        reference: "CHURCH-OPEN",
-      },
-      {
-        id: "opening-church-bank",
-        ownerId: "bridgetown-community-church",
-        title: "Opening linked bank balance",
-        detail: "Fictional church funding source",
-        amount: 1500,
-        balanceType: "bank",
-        createdAt: now,
-        reference: "CHURCH-OPEN",
-      },
-    ],
+      });
+    }
+    return entries;
+  });
+
+  return {
+    wallets,
+    ledger,
   };
 }
 
@@ -275,15 +189,16 @@ function normalizeState(state: WalletLabState): WalletLabState {
   }));
   const walletIds = new Set(normalizedWallets.map((wallet) => wallet.id));
   const ledgerIds = new Set(state.ledger.map((entry) => entry.id));
+  const missingWallets = baseline.wallets.filter((wallet) => !walletIds.has(wallet.id));
+  const missingWalletIds = new Set(missingWallets.map((wallet) => wallet.id));
 
   return {
-    wallets: [
-      ...normalizedWallets,
-      ...baseline.wallets.filter((wallet) => !walletIds.has(wallet.id)),
-    ],
+    wallets: [...normalizedWallets, ...missingWallets],
     ledger: [
       ...state.ledger,
-      ...baseline.ledger.filter((entry) => !ledgerIds.has(entry.id)),
+      ...baseline.ledger.filter(
+        (entry) => missingWalletIds.has(entry.ownerId) && !ledgerIds.has(entry.id)
+      ),
     ],
   };
 }
@@ -340,7 +255,7 @@ export default function WalletLabPage() {
   const totalAvailable =
     activeWallet.model === "prepaid"
       ? activeWallet.walletBalance
-      : activeWallet.model === "bank-linked"
+      : isBankOnlyModel(activeWallet.model)
         ? activeWallet.bankBalance
         : activeWallet.walletBalance + activeWallet.bankBalance;
 
@@ -410,8 +325,8 @@ export default function WalletLabPage() {
       setProfileMessage("Opening balances must be between $0.00 and $100,000.00 BBD.");
       return null;
     }
-    if (profileFields.model === "bank-linked" && walletBalance !== 0) {
-      setProfileMessage("A bank-linked profile cannot begin with stored wallet value.");
+    if (isBankOnlyModel(profileFields.model) && walletBalance !== 0) {
+      setProfileMessage("A bank-only profile cannot begin with stored wallet value.");
       return null;
     }
     return { walletBalance, bankBalance };
@@ -511,7 +426,7 @@ export default function WalletLabPage() {
   ): void {
     setActiveWalletId(wallet.id);
     setRecipientId(wallets.find((candidate) => candidate.id !== wallet.id)?.id ?? wallet.id);
-    setAction(wallet.model === "bank-linked" ? "merchant" : "reload");
+    setAction(isBankOnlyModel(wallet.model) ? "merchant" : "reload");
   }
 
   function cloneProfile(wallet: SimulatedWallet): void {
@@ -546,7 +461,7 @@ export default function WalletLabPage() {
         nextWallets.find((candidate) => candidate.id !== fallbackWallet.id)?.id ??
           fallbackWallet.id
       );
-      setAction(fallbackWallet.model === "bank-linked" ? "merchant" : "reload");
+      setAction(isBankOnlyModel(fallbackWallet.model) ? "merchant" : "reload");
     } else if (recipientId === wallet.id) {
       setRecipientId(
         nextWallets.find((candidate) => candidate.id !== activeWalletId)?.id ??
@@ -563,8 +478,8 @@ export default function WalletLabPage() {
 
     setActiveWalletId(walletId);
     setRecipientId(lab.wallets.find((wallet) => wallet.id !== walletId)?.id ?? walletId);
-    setAction(nextWallet.model === "bank-linked" ? "merchant" : "reload");
-    setAmount(nextWallet.model === "bank-linked" ? "12.50" : "25.00");
+    setAction(isBankOnlyModel(nextWallet.model) ? "merchant" : "reload");
+    setAmount(isBankOnlyModel(nextWallet.model) ? "12.50" : "25.00");
     setMessage("");
     setNote("");
   }
@@ -625,7 +540,7 @@ export default function WalletLabPage() {
       };
     }
 
-    if (wallet.model === "bank-linked") {
+    if (isBankOnlyModel(wallet.model)) {
       if (paymentAmount > wallet.bankBalance) return null;
       return {
         wallet: {
@@ -823,8 +738,8 @@ export default function WalletLabPage() {
     }
 
     if (action === "reload") {
-      if (activeWallet.model === "bank-linked") {
-        setMessage("A bank-linked wallet has no stored-value balance to reload.");
+      if (isBankOnlyModel(activeWallet.model)) {
+        setMessage("A bank-only profile has no stored-value balance to reload.");
         return;
       }
       if (transactionAmount > activeWallet.bankBalance) {
@@ -891,7 +806,7 @@ export default function WalletLabPage() {
 
     if (action === "transfer") {
       const recipientBalanceType: BalanceType =
-        recipientWallet.model === "bank-linked" ? "bank" : "wallet";
+        isBankOnlyModel(recipientWallet.model) ? "bank" : "wallet";
       const recipientUpdates =
         recipientBalanceType === "bank"
           ? { bankBalance: roundMoney(recipientWallet.bankBalance + transactionAmount) }
@@ -939,9 +854,9 @@ export default function WalletLabPage() {
             Wallet Funding Lab
           </h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-emerald-50/80">
-            Compare prepaid, bank-linked, and hybrid FinTech wallet behavior. Each model can pay
-            merchants or transfer to another model while its wallet and bank balances update
-            independently.
+            Compare prepaid, bank-linked, hybrid, and bank-direct FinTech funding behavior.
+            Profiles can pay merchants or transfer to another model while wallet and bank
+            balances update independently.
           </p>
         </div>
       </header>
@@ -963,7 +878,7 @@ export default function WalletLabPage() {
               sharedState.wallets.find((wallet) => wallet.id !== firstWallet.id)?.id ??
                 firstWallet.id
             );
-            setAction(firstWallet.model === "bank-linked" ? "merchant" : "reload");
+            setAction(isBankOnlyModel(firstWallet.model) ? "merchant" : "reload");
           }
         }}
       />
@@ -1143,7 +1058,9 @@ export default function WalletLabPage() {
                 setProfileFields((current) => ({
                   ...current,
                   model: value as FundingModel,
-                  walletBalance: value === "bank-linked" ? "0.00" : current.walletBalance,
+                  walletBalance: isBankOnlyModel(value as FundingModel)
+                    ? "0.00"
+                    : current.walletBalance,
                 }))
               }
               options={Object.entries(MODEL_DETAILS).map(([value, details]) => ({
@@ -1154,7 +1071,7 @@ export default function WalletLabPage() {
             <ProfileInput
               label="Opening stored-wallet balance (BBD)"
               value={profileFields.walletBalance}
-              disabled={profileFields.model === "bank-linked"}
+              disabled={isBankOnlyModel(profileFields.model)}
               inputMode="decimal"
               onChange={(value) =>
                 setProfileFields((current) => ({ ...current, walletBalance: value }))
@@ -1278,7 +1195,7 @@ export default function WalletLabPage() {
 
         <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="flex flex-wrap gap-2">
-            {activeWallet.model !== "bank-linked" && (
+            {!isBankOnlyModel(activeWallet.model) && (
               <ActionButton active={action === "reload"} onClick={() => switchAction("reload")}>
                 Add money
               </ActionButton>

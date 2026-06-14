@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
-import { MERCHANTS, PEOPLE } from "../data/sampleProfiles";
-import type { MerchantProfile, PersonProfile } from "../data/sampleProfiles";
+import { ACCOUNT_PROFILES, MERCHANTS, PEOPLE } from "../data/sampleProfiles";
+import type {
+  AccountProfile,
+  MerchantProfile,
+  PersonProfile,
+} from "../data/sampleProfiles";
 import {
   buildSandboxEmvPayload,
   isValidSandboxAmount,
@@ -74,7 +78,7 @@ interface PaymentLinkRecord {
   }>;
 }
 
-type RecipientProfile = PersonProfile | MerchantProfile;
+type RecipientProfile = AccountProfile | MerchantProfile;
 
 const CUSTOM_PEOPLE_STORAGE_KEY = "bimpay-sandbox-custom-people";
 const CUSTOM_MERCHANTS_STORAGE_KEY = "bimpay-sandbox-custom-merchants";
@@ -151,8 +155,12 @@ export default function ScenarioLabPage() {
   const [message, setMessage] = useState("");
   const [transactions, setTransactions] = useState<SimulatedTransaction[]>([]);
 
-  const people = useMemo(() => [...PEOPLE, ...customPeople], [customPeople]);
-  const payer = people.find((profile) => profile.id === payerId) ?? PEOPLE[0];
+  const accountProfiles = useMemo(
+    () => [...ACCOUNT_PROFILES, ...customPeople],
+    [customPeople]
+  );
+  const payer =
+    accountProfiles.find((profile) => profile.id === payerId) ?? ACCOUNT_PROFILES[0];
   const recipient = useMemo<RecipientProfile>(() => {
     if (mode === "merchant" && merchantSource === "preset") {
       return MERCHANTS.find((profile) => profile.id === merchantId) ?? MERCHANTS[0];
@@ -186,8 +194,18 @@ export default function ScenarioLabPage() {
       };
     }
 
-    return people.find((profile) => profile.id === personRecipientId) ?? PEOPLE[1];
-  }, [customMerchant, merchantId, merchantSource, mode, people, personRecipientId]);
+    return (
+      accountProfiles.find((profile) => profile.id === personRecipientId) ??
+      ACCOUNT_PROFILES[1]
+    );
+  }, [
+    accountProfiles,
+    customMerchant,
+    merchantId,
+    merchantSource,
+    mode,
+    personRecipientId,
+  ]);
   const request = useMemo<SandboxPaymentRequest>(
     () => ({
       recipientName: recipient.name,
@@ -408,7 +426,7 @@ export default function ScenarioLabPage() {
 
   async function generateRequest(): Promise<void> {
     if (mode === "interpersonal" && payer.id === recipient.id) {
-      setMessage("Choose two different people for an interpersonal payment.");
+      setMessage("Choose two different account profiles for this transfer.");
       return;
     }
 
@@ -558,11 +576,11 @@ export default function ScenarioLabPage() {
             Profile scenario lab
           </div>
           <h1 className="mt-4 text-3xl font-black tracking-tight sm:text-5xl">
-            Model payments between people and merchants
+            Model payments between people, organizations, and businesses
           </h1>
           <p className="mt-4 text-sm leading-6 text-blue-100 sm:text-base">
-            Generate situational QR requests from fictional profiles, review the payer and
-            recipient context, and complete a local transaction simulation.
+            Generate situational QR requests from a shared fictional profile catalog, including
+            individuals, businesses, charities, and churches.
           </p>
         </div>
       </header>
@@ -577,7 +595,7 @@ export default function ScenarioLabPage() {
             <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
               <ModeButton
                 active={mode === "interpersonal"}
-                label="Person to person"
+                label="Account transfer"
                 onClick={() => switchMode("interpersonal")}
               />
               <ModeButton
@@ -590,7 +608,7 @@ export default function ScenarioLabPage() {
             <div className="mt-6 space-y-5">
               <ProfileSelect
                 label="Payer"
-                profiles={people}
+                profiles={accountProfiles}
                 value={payerId}
                 onChange={(value) => {
                   setPayerId(value);
@@ -601,7 +619,7 @@ export default function ScenarioLabPage() {
               {mode === "interpersonal" ? (
                 <ProfileSelect
                   label="Recipient"
-                  profiles={people}
+                  profiles={accountProfiles}
                   value={personRecipientId}
                   onChange={(value) => {
                     setPersonRecipientId(value);
@@ -1447,7 +1465,7 @@ function ProfileSelect<T extends RecipientProfile>({
         >
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>
-              {profile.name} · {profile.financialInstitution}
+              {profile.name} · {profile.kind} · {profile.financialInstitution}
             </option>
           ))}
         </select>

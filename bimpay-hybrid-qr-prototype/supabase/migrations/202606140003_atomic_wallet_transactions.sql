@@ -158,7 +158,7 @@ begin
     end if;
     wallet_portion := transaction_amount;
     funding_description := 'stored wallet value';
-  elsif profile_record.funding_model = 'bank-linked' then
+  elsif profile_record.funding_model in ('bank-linked', 'bank-direct') then
     if transaction_amount > profile_record.bank_balance then
       raise exception 'Insufficient linked bank funds';
     end if;
@@ -283,8 +283,8 @@ begin
   for update;
 
   if not found then raise exception 'Wallet profile not found'; end if;
-  if profile_record.funding_model = 'bank-linked' then
-    raise exception 'A bank-linked wallet cannot be reloaded';
+  if profile_record.funding_model in ('bank-linked', 'bank-direct') then
+    raise exception 'A bank-only profile cannot be reloaded';
   end if;
   if transaction_amount > profile_record.bank_balance then
     raise exception 'Insufficient linked bank funds';
@@ -445,7 +445,10 @@ begin
   );
 
   recipient_balance_type :=
-    case when recipient_record.funding_model = 'bank-linked' then 'bank' else 'wallet' end;
+    case
+      when recipient_record.funding_model in ('bank-linked', 'bank-direct') then 'bank'
+      else 'wallet'
+    end;
 
   if recipient_balance_type = 'bank' then
     update public.wallet_profiles
@@ -530,8 +533,9 @@ begin
   for update;
 
   if not found then raise exception 'Wallet profile not found'; end if;
-  if target_balance_type = 'wallet' and profile_record.funding_model = 'bank-linked' then
-    raise exception 'A bank-linked profile cannot hold stored wallet value';
+  if target_balance_type = 'wallet'
+    and profile_record.funding_model in ('bank-linked', 'bank-direct') then
+    raise exception 'A bank-only profile cannot hold stored wallet value';
   end if;
 
   resulting_balance :=
