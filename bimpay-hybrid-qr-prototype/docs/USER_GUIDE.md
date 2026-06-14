@@ -110,6 +110,8 @@ local edits remain local.
 ### Multiple Linked Accounts
 
 A profile may have several linked accounts, such as checking and savings or operating and reserve.
+The wallet catalog and each profile's linked-account list are collapsed by default to keep the
+working area compact.
 
 - One enabled account is selected for each transaction.
 - A default account is used when no explicit choice is made.
@@ -124,7 +126,28 @@ Without an active shared workspace, transactions update browser-local state:
 - **Add money:** moves value from the selected linked account into stored value.
 - **Pay merchant:** debits according to the funding model.
 - **Send to wallet:** debits the sender and credits the recipient's wallet or default account.
+- **Request payment:** creates an RTP QR and waits for the selected payer to approve it.
 - **Adjust balance:** records an explicit sandbox-only correction.
+
+### Wallet QR Codes
+
+Expand **Wallet accounts**, then choose **Show QR** on any profile. The generated QR identifies the
+fictional wallet and funding model but excludes linked-account names, details, and balances. QR
+generation happens entirely in the browser and does not publish the profile.
+
+### Request To Pay
+
+The RTP experiment separates requesting money from moving money:
+
+1. Select the wallet that will receive the payment.
+2. Choose **Request payment**, the payer wallet, amount, and optional note.
+3. Create the request QR.
+4. Simulate explicit approval by the selected payer.
+
+Creating or scanning the QR does not alter balances. Approval debits the payer using its configured
+funding model and credits the requester. In a shared workspace, approval uses the same atomic and
+idempotent database transfer as **Send to wallet**. RTP QR payloads are test-only application data,
+not an implementation of a production banking-network RTP standard.
 
 ### Custom Wallet Profiles
 

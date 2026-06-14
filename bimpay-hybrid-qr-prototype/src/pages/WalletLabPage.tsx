@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import QRCode from "qrcode";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { WalletCollaborationPanel } from "../components/WalletCollaborationPanel";
 import { CATALOG_PROFILES, MERCHANTS, PEOPLE } from "../data/sampleProfiles";
@@ -20,7 +21,17 @@ import type {
   WalletLabState,
 } from "../types/wallet";
 
-type WalletAction = "reload" | "merchant" | "transfer" | "adjust";
+type WalletAction = "reload" | "merchant" | "transfer" | "request" | "adjust";
+
+interface WalletPaymentRequest {
+  id: string;
+  requesterId: string;
+  payerId: string;
+  amount: number;
+  note: string;
+  createdAt: string;
+  status: "pending" | "paid";
+}
 
 interface WalletProfileFields {
   ownerName: string;
@@ -324,6 +335,41 @@ function makeReference(prefix: string): string {
   return `${prefix}-${Date.now().toString().slice(-8)}`;
 }
 
+/** Encodes a portable wallet identity without exposing linked-account details. */
+function buildWalletQrPayload(wallet: SimulatedWallet): string {
+  return JSON.stringify({
+    scheme: "BIMPAY-SANDBOX",
+    version: 1,
+    type: "wallet-identity",
+    walletId: wallet.walletIdentifier,
+    profileId: wallet.id,
+    ownerName: wallet.ownerName,
+    fundingModel: wallet.model,
+    testOnly: true,
+  });
+}
+
+/** Encodes the minimum information needed to demonstrate a request-to-pay scan. */
+function buildRtpQrPayload(
+  request: WalletPaymentRequest,
+  requester: SimulatedWallet,
+  payer: SimulatedWallet
+): string {
+  return JSON.stringify({
+    scheme: "BIMPAY-SANDBOX",
+    version: 1,
+    type: "request-to-pay",
+    requestId: request.id,
+    requesterWalletId: requester.walletIdentifier,
+    requestedPayerWalletId: payer.walletIdentifier,
+    amount: request.amount.toFixed(2),
+    currency: "BBD",
+    note: request.note,
+    createdAt: request.createdAt,
+    testOnly: true,
+  });
+}
+
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -338,6 +384,8 @@ export default function WalletLabPage() {
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
   const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [showWalletCatalog, setShowWalletCatalog] = useState(false);
+  const [visibleWalletQrId, setVisibleWalletQrId] = useState("");
   const [editingProfileId, setEditingProfileId] = useState("");
   const [profileFields, setProfileFields] =
     useState<WalletProfileFields>(DEFAULT_PROFILE_FIELDS);
@@ -347,6 +395,9 @@ export default function WalletLabPage() {
   const [adjustmentBalanceType, setAdjustmentBalanceType] =
     useState<BalanceType>("wallet");
   const [fundingSourceId, setFundingSourceId] = useState("");
+  const [rtpPayerId, setRtpPayerId] = useState(PEOPLE[1].id);
+  const [rtpFundingSourceId, setRtpFundingSourceId] = useState("");
+  const [paymentRequest, setPaymentRequest] = useState<WalletPaymentRequest | null>(null);
   const [newSourceName, setNewSourceName] = useState("");
   const [newSourceDetail, setNewSourceDetail] = useState("");
   const [newSourceBalance, setNewSourceBalance] = useState("0.00");
@@ -362,6 +413,10 @@ export default function WalletLabPage() {
     lab.wallets.find((wallet) => wallet.id === recipientId) ??
     lab.wallets.find((wallet) => wallet.id !== activeWallet.id) ??
     lab.wallets[0];
+  const rtpPayer =
+    lab.wallets.find((wallet) => wallet.id === rtpPayerId) ??
+    lab.wallets.find((wallet) => wallet.id !== activeWallet.id) ??
+    lab.wallets[0];
   const activeLedger = useMemo(
     () => lab.ledger.filter((entry) => entry.ownerId === activeWallet.id),
     [activeWallet.id, lab.ledger]
@@ -369,6 +424,9 @@ export default function WalletLabPage() {
   const selectedFundingSource =
     activeWallet.fundingSources.find((source) => source.id === fundingSourceId) ??
     defaultFundingSource(activeWallet);
+  const selectedRtpFundingSource =
+    rtpPayer.fundingSources.find((source) => source.id === rtpFundingSourceId) ??
+    defaultFundingSource(rtpPayer);
   const totalAvailable =
     activeWallet.model === "prepaid"
       ? activeWallet.walletBalance
@@ -625,10 +683,15 @@ export default function WalletLabPage() {
   function selectWallet(walletId: string): void {
     const nextWallet = lab.wallets.find((wallet) => wallet.id === walletId);
     if (!nextWallet) return;
+    const nextRtpPayer =
+      lab.wallets.find((wallet) => wallet.id !== walletId) ?? nextWallet;
 
     setActiveWalletId(walletId);
     setFundingSourceId(defaultFundingSource(nextWallet)?.id ?? "");
     setRecipientId(lab.wallets.find((wallet) => wallet.id !== walletId)?.id ?? walletId);
+    setRtpPayerId(nextRtpPayer.id);
+    setRtpFundingSourceId(defaultFundingSource(nextRtpPayer)?.id ?? "");
+    setPaymentRequest(null);
     setAction(isBankOnlyModel(nextWallet.model) ? "merchant" : "reload");
     setAmount(isBankOnlyModel(nextWallet.model) ? "12.50" : "25.00");
     setMessage("");
@@ -638,8 +701,162 @@ export default function WalletLabPage() {
   function switchAction(nextAction: WalletAction): void {
     setAction(nextAction);
     setAmount(nextAction === "reload" ? "25.00" : "12.50");
+    setPaymentRequest(null);
     setMessage("");
     setNote("");
+  }
+
+  function selectRtpPayer(walletId: string): void {
+    const payer = lab.wallets.find((wallet) => wallet.id === walletId);
+    if (!payer) return;
+
+    setRtpPayerId(walletId);
+    setRtpFundingSourceId(defaultFundingSource(payer)?.id ?? "");
+    setPaymentRequest(null);
+    setMessage("");
+  }
+
+  /** Creates a local, test-only request that can be encoded directly into a QR. */
+  function createPaymentRequest(): void {
+    const requestAmount = roundMoney(Number(amount));
+    if (!Number.isFinite(requestAmount) || requestAmount <= 0 || requestAmount > 5000) {
+      setMessage("Enter an RTP amount from $0.01 to $5,000.00 BBD.");
+      return;
+    }
+    if (rtpPayer.id === activeWallet.id) {
+      setMessage("Choose another wallet to act as the payer.");
+      return;
+    }
+
+    setPaymentRequest({
+      id: crypto.randomUUID(),
+      requesterId: activeWallet.id,
+      payerId: rtpPayer.id,
+      amount: requestAmount,
+      note: note.trim() || "Wallet payment request",
+      createdAt: new Date().toISOString(),
+      status: "pending",
+    });
+    setMessage("Request created. The payer can scan the sandbox QR and approve it below.");
+  }
+
+  /**
+   * Simulates payer approval by debiting the requested payer and crediting the
+   * active requester. Shared workspaces use the same atomic transfer RPC as a
+   * normal wallet-to-wallet payment.
+   */
+  async function approvePaymentRequest(): Promise<void> {
+    if (!paymentRequest || paymentRequest.status !== "pending") return;
+    const requester = lab.wallets.find(
+      (wallet) => wallet.id === paymentRequest.requesterId
+    );
+    const payer = lab.wallets.find((wallet) => wallet.id === paymentRequest.payerId);
+    if (!requester || !payer) {
+      setMessage("One of the wallets in this request is no longer available.");
+      return;
+    }
+    if (sharedSession?.role === "viewer") {
+      setMessage("Viewers cannot approve shared payment requests.");
+      return;
+    }
+
+    const reference = `RTP-${paymentRequest.id.slice(0, 8).toUpperCase()}`;
+    setTransactionBusy(true);
+    setMessage("");
+
+    try {
+      if (sharedSession) {
+        const result = await transferSharedWallets({
+          workspaceId: sharedSession.workspaceId,
+          payerProfileId: payer.id,
+          recipientProfileId: requester.id,
+          amount: paymentRequest.amount,
+          detail: `RTP: ${paymentRequest.note}`,
+          reference,
+          idempotencyKey: paymentRequest.id,
+          fundingSourceId: selectedRtpFundingSource?.id,
+        });
+        try {
+          await refreshSharedState({ ...sharedSession, revision: result.revision });
+        } catch {
+          setPaymentRequest({ ...paymentRequest, status: "paid" });
+          setMessage(
+            "The RTP approval committed, but this browser could not refresh. Use Load shared to retrieve the new balances; retrying this request remains idempotent."
+          );
+          return;
+        }
+      } else {
+        const funded = fundPayment(
+          payer,
+          selectedRtpFundingSource,
+          paymentRequest.amount,
+          reference,
+          `Paid request from ${requester.ownerName}`,
+          paymentRequest.note
+        );
+        if (!funded) {
+          setMessage(
+            `The payer has insufficient ${MODEL_DETAILS[payer.model].shortLabel.toLowerCase()} funds.`
+          );
+          return;
+        }
+
+        const recipientBalanceType: BalanceType = isBankOnlyModel(requester.model)
+          ? "bank"
+          : "wallet";
+        const recipientSource = defaultFundingSource(requester);
+        const recipientFundingSources =
+          recipientBalanceType === "bank" && recipientSource
+            ? requester.fundingSources.map((source) =>
+                source.id === recipientSource.id
+                  ? {
+                      ...source,
+                      balance: roundMoney(source.balance + paymentRequest.amount),
+                    }
+                  : source
+              )
+            : requester.fundingSources;
+        const requesterUpdates =
+          recipientBalanceType === "bank"
+            ? {
+                bankBalance: totalFundingSources(recipientFundingSources),
+                fundingSources: recipientFundingSources,
+              }
+            : {
+                walletBalance: roundMoney(
+                  requester.walletBalance + paymentRequest.amount
+                ),
+              };
+        let nextWallets = updateWallet(lab.wallets, payer.id, funded.wallet);
+        nextWallets = updateWallet(nextWallets, requester.id, requesterUpdates);
+        persist({
+          wallets: nextWallets,
+          ledger: [
+            addEntry(
+              requester.id,
+              `RTP received from ${payer.ownerName}`,
+              paymentRequest.note,
+              paymentRequest.amount,
+              recipientBalanceType,
+              reference
+            ),
+            ...funded.entries,
+            ...lab.ledger,
+          ],
+        });
+      }
+
+      setPaymentRequest({ ...paymentRequest, status: "paid" });
+      setMessage(
+        `${formatMoney(paymentRequest.amount)} was approved by ${payer.ownerName} and credited to ${requester.ownerName}.`
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "The payment request could not be approved."
+      );
+    } finally {
+      setTransactionBusy(false);
+    }
   }
 
   function addFundingSource(): void {
@@ -1122,6 +1339,9 @@ export default function WalletLabPage() {
     persist(nextState);
     setActiveWalletId(PEOPLE[0].id);
     setRecipientId(PEOPLE[1].id);
+    setRtpPayerId(PEOPLE[1].id);
+    setRtpFundingSourceId(defaultFundingSource(nextState.wallets[1])?.id ?? "");
+    setPaymentRequest(null);
     setAction("reload");
     setMessage("All wallet models and balances were reset.");
   }
@@ -1156,11 +1376,14 @@ export default function WalletLabPage() {
           persist(sharedState);
           const firstWallet = sharedState.wallets[0];
           if (firstWallet) {
+            const secondWallet =
+              sharedState.wallets.find((wallet) => wallet.id !== firstWallet.id) ??
+              firstWallet;
             setActiveWalletId(firstWallet.id);
-            setRecipientId(
-              sharedState.wallets.find((wallet) => wallet.id !== firstWallet.id)?.id ??
-                firstWallet.id
-            );
+            setRecipientId(secondWallet.id);
+            setRtpPayerId(secondWallet.id);
+            setRtpFundingSourceId(defaultFundingSource(secondWallet)?.id ?? "");
+            setPaymentRequest(null);
             setAction(isBankOnlyModel(firstWallet.model) ? "merchant" : "reload");
           }
         }}
@@ -1176,30 +1399,43 @@ export default function WalletLabPage() {
               Built-in profiles are read-only. Clone one or create your own.
             </p>
           </div>
-          <button
-            className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-slate-800"
-            type="button"
-            onClick={openNewProfile}
-          >
-            Create custom wallet
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-100"
+              type="button"
+              aria-expanded={showWalletCatalog}
+              onClick={() => setShowWalletCatalog((current) => !current)}
+            >
+              {showWalletCatalog
+                ? "Collapse wallet accounts"
+                : `Show ${lab.wallets.length} wallet accounts`}
+            </button>
+            <button
+              className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white transition hover:bg-slate-800"
+              type="button"
+              onClick={openNewProfile}
+            >
+              Create custom wallet
+            </button>
+          </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {lab.wallets.map((wallet) => (
-            <article
+        {showWalletCatalog && (
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {lab.wallets.map((wallet) => (
+              <article
               className={`rounded-2xl border p-4 transition ${
                 wallet.id === activeWallet.id
                   ? "border-slate-950 bg-slate-950 text-white shadow-lg"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
               }`}
-              key={wallet.id}
-            >
-              <button
-                className="w-full text-left"
-                type="button"
-                onClick={() => selectWallet(wallet.id)}
+                key={wallet.id}
               >
-              <div className="flex items-start justify-between gap-3">
+                <button
+                  className="w-full text-left"
+                  type="button"
+                  onClick={() => selectWallet(wallet.id)}
+                >
+                  <div className="flex items-start justify-between gap-3">
                   <div className="font-black">{wallet.ownerName}</div>
                   {wallet.isCustom && (
                     <span
@@ -1212,7 +1448,7 @@ export default function WalletLabPage() {
                       Custom
                     </span>
                   )}
-                </div>
+                  </div>
                 <div
                   className={`mt-2 text-[0.68rem] font-black uppercase tracking-[0.12em] ${
                     wallet.id === activeWallet.id ? "text-cyan-300" : "text-slate-400"
@@ -1243,7 +1479,7 @@ export default function WalletLabPage() {
                 >
                   {wallet.walletIdentifier}
                 </div>
-              </button>
+                </button>
               <div
                 className={`mt-4 flex flex-wrap gap-2 border-t pt-3 ${
                   wallet.id === activeWallet.id ? "border-white/10" : "border-slate-100"
@@ -1273,6 +1509,22 @@ export default function WalletLabPage() {
                 >
                   Clone
                 </button>
+                <button
+                  className={`text-xs font-black ${
+                    wallet.id === activeWallet.id
+                      ? "text-amber-300 hover:text-amber-200"
+                      : "text-amber-700 hover:text-amber-900"
+                  }`}
+                  type="button"
+                  aria-expanded={visibleWalletQrId === wallet.id}
+                  onClick={() =>
+                    setVisibleWalletQrId((current) =>
+                      current === wallet.id ? "" : wallet.id
+                    )
+                  }
+                >
+                  {visibleWalletQrId === wallet.id ? "Hide QR" : "Show QR"}
+                </button>
                 {wallet.isCustom && (
                   <button
                     className={`text-xs font-black ${
@@ -1287,9 +1539,26 @@ export default function WalletLabPage() {
                   </button>
                 )}
               </div>
-            </article>
-          ))}
-        </div>
+              {visibleWalletQrId === wallet.id && (
+                <div
+                  className={`mt-4 rounded-2xl p-4 ${
+                    wallet.id === activeWallet.id ? "bg-white" : "bg-slate-50"
+                  }`}
+                >
+                  <SandboxQr
+                    payload={buildWalletQrPayload(wallet)}
+                    alt={`Sandbox QR for ${wallet.ownerName}`}
+                    size={180}
+                  />
+                  <p className="mt-3 text-center text-xs font-bold text-slate-600">
+                    Wallet identity QR, test only
+                  </p>
+                </div>
+              )}
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       {showProfileEditor && (
@@ -1477,9 +1746,19 @@ export default function WalletLabPage() {
             )}
           </article>
 
-          <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-black text-slate-950">Linked funding accounts</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+          <details className="group rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
+              <span className="text-lg font-black text-slate-950">
+                Linked funding accounts
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                {activeWallet.fundingSources.length} account
+                {activeWallet.fundingSources.length === 1 ? "" : "s"}{" "}
+                <span aria-hidden="true" className="ml-1 group-open:hidden">+</span>
+                <span aria-hidden="true" className="ml-1 hidden group-open:inline">-</span>
+              </span>
+            </summary>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
               One account is selected per transaction. Payments are never split silently across
               multiple bank accounts.
             </p>
@@ -1552,7 +1831,7 @@ export default function WalletLabPage() {
                 </button>
               </div>
             )}
-          </article>
+          </details>
         </div>
 
         <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -1567,6 +1846,9 @@ export default function WalletLabPage() {
             </ActionButton>
             <ActionButton active={action === "transfer"} onClick={() => switchAction("transfer")}>
               Send to wallet
+            </ActionButton>
+            <ActionButton active={action === "request"} onClick={() => switchAction("request")}>
+              Request payment
             </ActionButton>
             {sharedSession && sharedSession.role !== "viewer" && (
               <ActionButton active={action === "adjust"} onClick={() => switchAction("adjust")}>
@@ -1583,7 +1865,9 @@ export default function WalletLabPage() {
                   ? "Merchant payment"
                   : action === "transfer"
                     ? "Cross-model wallet transfer"
-                    : "Explicit sandbox adjustment"}
+                    : action === "request"
+                      ? "Request to pay (RTP)"
+                      : "Explicit sandbox adjustment"}
             </div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">
               {action === "reload"
@@ -1592,13 +1876,16 @@ export default function WalletLabPage() {
                   ? "Choose a fictional merchant"
                   : action === "transfer"
                     ? "Choose any other wallet model"
-                    : `Adjust ${activeWallet.ownerName}'s recorded balance`}
+                    : action === "request"
+                      ? `Request money for ${activeWallet.ownerName}`
+                      : `Adjust ${activeWallet.ownerName}'s recorded balance`}
             </h2>
           </div>
 
           <div className="mt-6 space-y-5">
             {(action === "reload" ||
-              (action !== "adjust" && activeWallet.model !== "prepaid") ||
+              ((action === "merchant" || action === "transfer") &&
+                activeWallet.model !== "prepaid") ||
               (action === "adjust" && adjustmentBalanceType === "bank")) && (
               <SelectField
                 label="Linked funding account"
@@ -1653,6 +1940,42 @@ export default function WalletLabPage() {
                   }))}
               />
             )}
+            {action === "request" && (
+              <>
+                <SelectField
+                  label="Requested payer wallet"
+                  value={rtpPayer.id}
+                  onChange={selectRtpPayer}
+                  options={lab.wallets
+                    .filter((wallet) => wallet.id !== activeWallet.id)
+                    .map((wallet) => ({
+                      value: wallet.id,
+                      label: `${wallet.ownerName} - ${MODEL_DETAILS[wallet.model].label}`,
+                    }))}
+                />
+                {rtpPayer.model !== "prepaid" && (
+                  <SelectField
+                    label="Payer funding account for simulated approval"
+                    value={selectedRtpFundingSource?.id ?? ""}
+                    onChange={(value) => {
+                      setRtpFundingSourceId(value);
+                      setPaymentRequest(null);
+                    }}
+                    options={rtpPayer.fundingSources
+                      .filter((source) => source.enabled)
+                      .sort((left, right) => left.priority - right.priority)
+                      .map((source) => ({
+                        value: source.id,
+                        label: `${source.name} - ${source.detail} (${formatMoney(source.balance)})${source.isDefault ? " - default" : ""}`,
+                      }))}
+                  />
+                )}
+                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm leading-6 text-violet-950">
+                  Creating a request does not move money. The selected payer must explicitly
+                  approve it before balances and ledger entries change.
+                </div>
+              </>
+            )}
             {action === "adjust" && (
               <SelectField
                 label="Balance to adjust"
@@ -1677,7 +2000,10 @@ export default function WalletLabPage() {
                   className="min-w-0 flex-1 px-4 py-4 text-lg font-black text-slate-950 outline-none"
                   inputMode="decimal"
                   value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
+                  onChange={(event) => {
+                    setAmount(event.target.value);
+                    if (action === "request") setPaymentRequest(null);
+                  }}
                 />
               </div>
             </label>
@@ -1688,7 +2014,10 @@ export default function WalletLabPage() {
                   className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-emerald-500 hover:text-emerald-700"
                   key={quickAmount}
                   type="button"
-                  onClick={() => setAmount(quickAmount.toFixed(2))}
+                  onClick={() => {
+                    setAmount(quickAmount.toFixed(2));
+                    if (action === "request") setPaymentRequest(null);
+                  }}
                 >
                   ${quickAmount}
                 </button>
@@ -1709,16 +2038,63 @@ export default function WalletLabPage() {
                         : "What is this for?"
                   }
                   value={note}
-                  onChange={(event) => setNote(event.target.value)}
+                  onChange={(event) => {
+                    setNote(event.target.value);
+                    if (action === "request") setPaymentRequest(null);
+                  }}
                 />
               </label>
+            )}
+
+            {action === "request" && paymentRequest && (
+              <div className="rounded-[1.5rem] border border-violet-200 bg-violet-50 p-5">
+                <div className="grid gap-5 sm:grid-cols-[180px_1fr] sm:items-center">
+                  <SandboxQr
+                    payload={buildRtpQrPayload(paymentRequest, activeWallet, rtpPayer)}
+                    alt={`Payment request QR from ${activeWallet.ownerName}`}
+                    size={180}
+                  />
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">
+                      {paymentRequest.status === "paid" ? "Paid request" : "RTP ready to scan"}
+                    </div>
+                    <div className="mt-2 text-2xl font-black text-slate-950">
+                      {formatMoney(paymentRequest.amount)}
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {rtpPayer.ownerName} is being asked to pay {activeWallet.ownerName}.
+                      The QR contains sandbox wallet identifiers, the amount, and the request
+                      reference.
+                    </p>
+                    <div className="mt-3 font-mono text-xs text-slate-500">
+                      RTP-{paymentRequest.id.slice(0, 8).toUpperCase()}
+                    </div>
+                    {paymentRequest.status === "pending" && (
+                      <button
+                        className="mt-4 rounded-xl bg-violet-700 px-4 py-3 text-sm font-black text-white transition hover:bg-violet-800 disabled:opacity-50"
+                        type="button"
+                        disabled={transactionBusy || sharedSession?.role === "viewer"}
+                        onClick={() => void approvePaymentRequest()}
+                      >
+                        {transactionBusy
+                          ? "Approving atomically..."
+                          : `Simulate approval by ${rtpPayer.ownerName}`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
 
             <button
               className="w-full rounded-2xl bg-emerald-700 px-5 py-4 text-sm font-black text-white transition hover:bg-emerald-800"
               type="button"
               disabled={transactionBusy || sharedSession?.role === "viewer"}
-              onClick={() => void submitTransaction()}
+              onClick={() =>
+                action === "request"
+                  ? createPaymentRequest()
+                  : void submitTransaction()
+              }
             >
               {transactionBusy
                 ? "Processing atomically..."
@@ -1728,7 +2104,11 @@ export default function WalletLabPage() {
                   ? `Pay with ${MODEL_DETAILS[activeWallet.model].shortLabel.toLowerCase()} funding`
                   : action === "transfer"
                     ? "Transfer between wallet models"
-                    : "Apply atomic balance adjustment"}
+                    : action === "request"
+                      ? paymentRequest
+                        ? "Regenerate request QR"
+                        : "Create request-to-pay QR"
+                      : "Apply atomic balance adjustment"}
             </button>
 
             {message && (
@@ -1866,6 +2246,60 @@ function BalanceValue({ label, value }: { label: string; value: number }) {
     <div>
       <div className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 text-lg font-black text-white">{formatMoney(value)}</div>
+    </div>
+  );
+}
+
+/**
+ * Renders a QR from an in-memory sandbox payload. Generation stays client-side,
+ * so displaying a wallet QR does not publish profile data or create a payment.
+ */
+function SandboxQr({
+  payload,
+  alt,
+  size,
+}: {
+  payload: string;
+  alt: string;
+  size: number;
+}) {
+  const [dataUrl, setDataUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void QRCode.toDataURL(payload, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: size,
+    })
+      .then((url) => {
+        if (!cancelled) setDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setDataUrl("");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [payload, size]);
+
+  return dataUrl ? (
+    <img
+      className="mx-auto rounded-xl bg-white"
+      src={dataUrl}
+      width={size}
+      height={size}
+      alt={alt}
+    />
+  ) : (
+    <div
+      className="mx-auto grid animate-pulse place-items-center rounded-xl bg-slate-200 text-xs font-bold text-slate-500"
+      style={{ width: size, height: size }}
+      role="status"
+    >
+      Generating QR...
     </div>
   );
 }

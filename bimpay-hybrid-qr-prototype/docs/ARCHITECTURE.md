@@ -120,6 +120,16 @@ The transaction uses stored value first. Any remainder is debited from one selec
 The operation fails if that source cannot cover the remainder, even if other linked accounts have
 funds.
 
+## Wallet QR and RTP Payloads
+
+Wallet identity and request-to-pay QR payloads are generated in the browser as explicitly marked
+`BIMPAY-SANDBOX` JSON documents. Wallet identity payloads intentionally omit balances and linked
+account metadata.
+
+An RTP request is transient UI state until approval. Approval is implemented as a wallet transfer:
+the selected payer is debited, the requester is credited, and shared workspaces use
+`transfer_between_wallets_from_source` for transactional consistency and idempotency.
+
 ## Multi-Branch Merchants
 
 Merchant profiles may include a group name, branch name, branch code, and settlement model.

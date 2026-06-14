@@ -29,6 +29,7 @@ payment scenarios, and FinTech wallet funding behavior.
 - Compare prepaid, bank-linked, hybrid, and bank-direct profiles.
 - Reload stored value, pay merchants, transfer between profiles, and adjust sandbox balances.
 - Use multiple linked accounts with an explicit account selection per transaction.
+- Display privacy-limited wallet identity QRs and simulate request-to-pay approval.
 - Maintain separate wallet, linked-account, and ledger records.
 - Create and manage custom individual, business, charity, and church profiles.
 - Run shared transactions through atomic Supabase database functions.
