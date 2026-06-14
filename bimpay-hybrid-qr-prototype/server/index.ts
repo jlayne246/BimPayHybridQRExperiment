@@ -30,10 +30,32 @@ type PaymentLinkRecord = {
   token: string;
   emvPayload: string;
   createdAt: string;
+  expiresAt: string;
+  updatedAt: string;
   isActive: boolean;
+  status: PaymentSessionStatus;
+  payerName: string;
+  recipientName: string;
+  reference: string;
+  requestedAmount: string;
+  amountMode: "fixed" | "variable";
+  authorizedAmount: string;
+  events: Array<{ status: PaymentSessionStatus; actor: string; timestamp: string }>;
 };
 
+type PaymentSessionStatus =
+  | "created"
+  | "scanned"
+  | "authorized"
+  | "declined"
+  | "expired"
+  | "cancelled"
+  | "refunded";
+
 const paymentLinks = new Map<string, PaymentLinkRecord>();
+const SESSION_STATUSES = new Set<PaymentSessionStatus>([
+  "created", "scanned", "authorized", "declined", "expired", "cancelled", "refunded",
+]);
 
 function isSandboxPayload(payload: string): boolean {
   return (
@@ -126,7 +148,21 @@ app.use("/api/payment-links", (req, res, next) => {
 });
 
 app.post("/api/payment-links", (req, res) => {
-  const { emvPayload } = req.body as { emvPayload?: string };
+  const {
+    emvPayload,
+    payerName = "",
+    recipientName = "",
+    reference = "",
+    requestedAmount = "",
+    amountMode = "fixed",
+  } = req.body as {
+    emvPayload?: string;
+    payerName?: string;
+    recipientName?: string;
+    reference?: string;
+    requestedAmount?: string;
+    amountMode?: "fixed" | "variable";
+  };
 
   if (!emvPayload) {
     return res.status(400).json({ error: "emvPayload is required." });
@@ -140,11 +176,22 @@ app.post("/api/payment-links", (req, res) => {
 
   const token = nanoid(10);
 
+  const now = new Date();
   const record: PaymentLinkRecord = {
     token,
     emvPayload,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+    updatedAt: now.toISOString(),
     isActive: true,
+    status: "created",
+    payerName: payerName.slice(0, 60),
+    recipientName: recipientName.slice(0, 60),
+    reference: reference.slice(0, 100),
+    requestedAmount,
+    amountMode: amountMode === "variable" ? "variable" : "fixed",
+    authorizedAmount: "",
+    events: [{ status: "created", actor: "creator", timestamp: now.toISOString() }],
   };
 
   paymentLinks.set(token, record);
@@ -152,14 +199,55 @@ app.post("/api/payment-links", (req, res) => {
   return res.json(record);
 });
 
-app.get("/api/payment-links/:token", (req, res) => {
-  const record = paymentLinks.get(req.params.token);
+app.get("/api/payment-links", (req, res) => {
+  const token = String(req.query.token ?? req.query.t ?? "").trim();
+  const record = paymentLinks.get(token);
 
   if (!record || !record.isActive) {
     return res.status(404).json({ error: "Payment link not found." });
   }
 
   return res.json(record);
+});
+
+app.patch("/api/payment-links", (req, res) => {
+  const token = String(req.query.token ?? req.query.t ?? "").trim();
+  const { status, actor = "participant", authorizedAmount = "" } = req.body as {
+    status?: PaymentSessionStatus;
+    actor?: string;
+    authorizedAmount?: string;
+  };
+  const record = paymentLinks.get(token);
+
+  if (!record || !record.isActive) {
+    return res.status(404).json({ error: "Payment session not found." });
+  }
+  if (!status || !SESSION_STATUSES.has(status)) {
+    return res.status(400).json({ error: "A valid status is required." });
+  }
+  if (
+    status === "authorized" &&
+    record.amountMode === "variable" &&
+    !/^\d+(\.\d{2})$/.test(authorizedAmount)
+  ) {
+    return res.status(400).json({ error: "A valid authorized amount is required." });
+  }
+
+  const now = new Date().toISOString();
+  const updated: PaymentLinkRecord = {
+    ...record,
+    status,
+    updatedAt: now,
+    authorizedAmount:
+      status === "authorized"
+        ? record.amountMode === "variable"
+          ? authorizedAmount
+          : record.requestedAmount
+        : record.authorizedAmount,
+    events: [...record.events, { status, actor: actor.slice(0, 60), timestamp: now }],
+  };
+  paymentLinks.set(token, updated);
+  return res.json(updated);
 });
 
 app.listen(port, () => {

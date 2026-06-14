@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { BIMPAY_GUI, BIMPAY_SCHEME } from "../lib/sandboxEmv";
 import { MERCHANT_CATEGORY_OPTIONS } from "../data/merchantCategories";
+import { readJsonResponse } from "../lib/http";
 
 type AmountMode = "variable" | "fixed";
 
@@ -325,7 +326,7 @@ export default function CreatePaymentQrPage() {
         });
 
         if (response.ok) {
-          const record = (await response.json()) as PaymentLinkRecord;
+          const record = await readJsonResponse<PaymentLinkRecord>(response);
           createdToken = record.token;
           tokenizedLink = `${window.location.origin}/pay?t=${record.token}`;
 

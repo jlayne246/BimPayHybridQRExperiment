@@ -6,6 +6,7 @@ import {
 } from "@zxing/browser";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { buildSandboxEmvPayload } from "../lib/sandboxEmv";
+import { readJsonOrError } from "../lib/http";
 
 type ExtractMode = "empty" | "raw-emv" | "payment-link";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
@@ -65,8 +66,30 @@ interface PaymentLinkRecord {
   emvPayload: string;
   createdAt: string;
   expiresAt: string;
+  updatedAt: string;
   isActive: boolean;
+  status: PaymentSessionStatus;
+  payerName: string;
+  recipientName: string;
+  reference: string;
+  requestedAmount: string;
+  amountMode: "fixed" | "variable";
+  authorizedAmount: string;
+  events: Array<{
+    status: PaymentSessionStatus;
+    actor: string;
+    timestamp: string;
+  }>;
 }
+
+type PaymentSessionStatus =
+  | "created"
+  | "scanned"
+  | "authorized"
+  | "declined"
+  | "expired"
+  | "cancelled"
+  | "refunded";
 
 const SAMPLE_EMV = buildSandboxEmvPayload({
   recipientName: "Test Seabreeze Cafe",
@@ -451,6 +474,8 @@ export default function ResolverPage() {
   });
   const [facingMode] = useState<CameraMode>("environment");
   const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
+  const [sharedSession, setSharedSession] = useState<PaymentLinkRecord | null>(null);
+  const [authorizedAmount, setAuthorizedAmount] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -502,6 +527,8 @@ export default function ResolverPage() {
 
   function clearResolvedToken(): void {
     setResolvedToken("");
+    setSharedSession(null);
+    setAuthorizedAmount("");
     sessionStorage.removeItem("resolvedPaymentToken");
     lastResolvedTokenRef.current = "";
   }
@@ -522,24 +549,45 @@ export default function ResolverPage() {
         }
       );
 
-      const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(text || "Payment token not found.");
-      }
-
-      const record = JSON.parse(text) as PaymentLinkRecord;
+      const record = await readJsonOrError<PaymentLinkRecord>(response);
 
       rememberResolvedToken(record.token);
       lastResolvedTokenRef.current = record.token;
       setInput(record.emvPayload);
+      setSharedSession(record);
+      setAuthorizedAmount(record.authorizedAmount);
 
       setScanMessage(
-        `Payment token resolved successfully. Token expires at ${new Date(record.expiresAt).toLocaleTimeString()}`
+        `Shared payment session resolved. It expires at ${new Date(record.expiresAt).toLocaleTimeString()}`
       );
     } catch (error) {
       console.error(error);
       setScanMessage("Could not resolve payment token.");
+    }
+  }
+
+  async function updateSharedSession(status: PaymentSessionStatus): Promise<void> {
+    if (!sharedSession) return;
+
+    try {
+      const response = await fetch(
+        `/api/payment-links?t=${encodeURIComponent(sharedSession.token)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            status,
+            actor: sharedSession.payerName || "scanner",
+            authorizedAmount,
+          }),
+        }
+      );
+      const record = await readJsonOrError<PaymentLinkRecord>(response);
+      setSharedSession(record);
+      setAuthorizedAmount(record.authorizedAmount);
+      setScanMessage(`Shared payment session moved to ${record.status}.`);
+    } catch (error) {
+      setScanMessage(error instanceof Error ? error.message : "Could not update payment session.");
     }
   }
 
@@ -733,6 +781,27 @@ export default function ResolverPage() {
   }, []);
 
   useEffect(() => {
+    if (!sharedSession?.token) return;
+
+    const interval = window.setInterval(() => {
+      void fetch(`/api/payment-links?t=${encodeURIComponent(sharedSession.token)}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      })
+        .then((response) => readJsonOrError<PaymentLinkRecord>(response))
+        .then((record) => {
+          setSharedSession(record);
+          setAuthorizedAmount(record.authorizedAmount);
+        })
+        .catch(() => {
+          window.clearInterval(interval);
+        });
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [sharedSession?.token]);
+
+  useEffect(() => {
     return () => {
       if (resolveTimeoutRef.current !== null) {
         window.clearTimeout(resolveTimeoutRef.current);
@@ -887,6 +956,106 @@ export default function ResolverPage() {
                     </div>
                   </div>
                 </div>
+
+                {sharedSession && (
+                  <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-black text-slate-950">Shared transaction session</div>
+                        <div className="mt-1 text-xs text-slate-600">
+                          Token <span className="font-mono">{sharedSession.token}</span> · expires{" "}
+                          {new Date(sharedSession.expiresAt).toLocaleTimeString()}
+                        </div>
+                      </div>
+                      <span className={badgeClasses(
+                        sharedSession.status === "authorized"
+                          ? "success"
+                          : sharedSession.status === "declined" ||
+                              sharedSession.status === "cancelled"
+                            ? "danger"
+                            : sharedSession.status === "scanned"
+                              ? "warning"
+                              : "info"
+                      )}>
+                        {sharedSession.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                      <StatCard label="Payer" value={sharedSession.payerName} />
+                      <StatCard label="Recipient" value={sharedSession.recipientName} />
+                    </div>
+
+                    {sharedSession.status === "created" && (
+                      <button
+                        className="mt-4 w-full rounded-2xl bg-blue-700 px-4 py-3 text-sm font-black text-white hover:bg-blue-600"
+                        type="button"
+                        onClick={() => void updateSharedSession("scanned")}
+                      >
+                        Mark request scanned
+                      </button>
+                    )}
+
+                    {sharedSession.status === "scanned" && (
+                      <div className="mt-4 space-y-3">
+                        {sharedSession.amountMode === "variable" && (
+                          <label className="block">
+                            <span className="mb-2 block text-sm font-bold text-slate-700">
+                              Authorized amount (BBD)
+                            </span>
+                            <input
+                              className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+                              inputMode="decimal"
+                              placeholder="18.75"
+                              value={authorizedAmount}
+                              onChange={(event) => setAuthorizedAmount(event.target.value)}
+                            />
+                          </label>
+                        )}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <button
+                            className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-500"
+                            type="button"
+                            onClick={() => void updateSharedSession("authorized")}
+                          >
+                            Authorize payment
+                          </button>
+                          <button
+                            className="rounded-2xl bg-red-600 px-4 py-3 text-sm font-black text-white hover:bg-red-500"
+                            type="button"
+                            onClick={() => void updateSharedSession("declined")}
+                          >
+                            Decline
+                          </button>
+                          <button
+                            className="rounded-2xl bg-orange-600 px-4 py-3 text-sm font-black text-white hover:bg-orange-500"
+                            type="button"
+                            onClick={() => void updateSharedSession("cancelled")}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className="rounded-2xl bg-slate-700 px-4 py-3 text-sm font-black text-white hover:bg-slate-600"
+                            type="button"
+                            onClick={() => void updateSharedSession("expired")}
+                          >
+                            Expire
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {sharedSession.status === "authorized" && (
+                      <button
+                        className="mt-4 w-full rounded-2xl bg-violet-700 px-4 py-3 text-sm font-black text-white hover:bg-violet-600"
+                        type="button"
+                        onClick={() => void updateSharedSession("refunded")}
+                      >
+                        Simulate refund
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <button
                   className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-200"

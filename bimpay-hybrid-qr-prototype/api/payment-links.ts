@@ -8,10 +8,43 @@ type PaymentLinkRecord = {
   emvPayload: string;
   createdAt: string;
   expiresAt: string;
+  updatedAt: string;
   isActive: boolean;
+  status: PaymentSessionStatus;
+  payerName: string;
+  recipientName: string;
+  reference: string;
+  requestedAmount: string;
+  amountMode: "fixed" | "variable";
+  authorizedAmount: string;
+  events: PaymentSessionEvent[];
+};
+
+type PaymentSessionStatus =
+  | "created"
+  | "scanned"
+  | "authorized"
+  | "declined"
+  | "expired"
+  | "cancelled"
+  | "refunded";
+
+type PaymentSessionEvent = {
+  status: PaymentSessionStatus;
+  actor: string;
+  timestamp: string;
 };
 
 const TTL_SECONDS = 60 * 15;
+const SESSION_STATUSES = new Set<PaymentSessionStatus>([
+  "created",
+  "scanned",
+  "authorized",
+  "declined",
+  "expired",
+  "cancelled",
+  "refunded",
+]);
 
 function isSandboxPayload(payload: string): boolean {
   return (
@@ -31,19 +64,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  if (req.method === "POST") {
-    return createPaymentLink(req, res);
+  try {
+    if (req.method === "POST") return await createPaymentLink(req, res);
+    if (req.method === "GET") return await getPaymentLink(req, res);
+    if (req.method === "PATCH") return await updatePaymentLink(req, res);
+    return res.status(405).json({ error: "Method not allowed." });
+  } catch (error) {
+    console.error("Payment session API error", error);
+    return res.status(500).json({ error: "The payment session service failed." });
   }
-
-  if (req.method === "GET") {
-    return getPaymentLink(req, res);
-  }
-
-  return res.status(405).json({ error: "Method not allowed." });
 }
 
 async function createPaymentLink(req: VercelRequest, res: VercelResponse) {
-  const { emvPayload } = req.body as { emvPayload?: string };
+  const {
+    emvPayload,
+    payerName = "",
+    recipientName = "",
+    reference = "",
+    requestedAmount = "",
+    amountMode = "fixed",
+  } = req.body as {
+    emvPayload?: string;
+    payerName?: string;
+    recipientName?: string;
+    reference?: string;
+    requestedAmount?: string;
+    amountMode?: "fixed" | "variable";
+  };
 
   if (!emvPayload?.trim()) {
     return res.status(400).json({ error: "emvPayload is required." });
@@ -64,7 +111,16 @@ async function createPaymentLink(req: VercelRequest, res: VercelResponse) {
     emvPayload,
     createdAt: now.toISOString(),
     expiresAt,
+    updatedAt: now.toISOString(),
     isActive: true,
+    status: "created",
+    payerName: payerName.slice(0, 60),
+    recipientName: recipientName.slice(0, 60),
+    reference: reference.slice(0, 100),
+    requestedAmount,
+    amountMode: amountMode === "variable" ? "variable" : "fixed",
+    authorizedAmount: "",
+    events: [{ status: "created", actor: "creator", timestamp: now.toISOString() }],
   };
 
   const redis = await getRedisClient();
@@ -98,11 +154,86 @@ async function getPaymentLink(req: VercelRequest, res: VercelResponse) {
     return res.status(404).json({ error: "Payment link not found or expired." });
   }
 
-  const record = JSON.parse(raw) as PaymentLinkRecord;
+  const record = normalizePaymentLinkRecord(
+    JSON.parse(raw) as Partial<PaymentLinkRecord>
+  );
 
   if (!record.isActive) {
     return res.status(404).json({ error: "Payment link is inactive." });
   }
 
   return res.status(200).json(record);
+}
+
+async function updatePaymentLink(req: VercelRequest, res: VercelResponse) {
+  const token = String(req.query.token ?? req.query.t ?? "").trim();
+  const { status, actor = "participant", authorizedAmount = "" } = req.body as {
+    status?: PaymentSessionStatus;
+    actor?: string;
+    authorizedAmount?: string;
+  };
+
+  if (!token || !status || !SESSION_STATUSES.has(status)) {
+    return res.status(400).json({ error: "A valid token and status are required." });
+  }
+
+  const redis = await getRedisClient();
+  const key = `payment-link:${token}`;
+  const raw = await redis.get(key);
+  if (!raw) return res.status(404).json({ error: "Payment session not found or expired." });
+
+  const record = normalizePaymentLinkRecord(
+    JSON.parse(raw) as Partial<PaymentLinkRecord>
+  );
+  if (
+    status === "authorized" &&
+    record.amountMode === "variable" &&
+    !/^\d+(\.\d{2})$/.test(authorizedAmount)
+  ) {
+    return res.status(400).json({ error: "A valid authorized amount is required." });
+  }
+
+  const now = new Date().toISOString();
+  const updated: PaymentLinkRecord = {
+    ...record,
+    status,
+    updatedAt: now,
+    authorizedAmount:
+      status === "authorized"
+        ? record.amountMode === "variable"
+          ? authorizedAmount
+          : record.requestedAmount
+        : record.authorizedAmount,
+    events: [...(record.events ?? []), { status, actor: actor.slice(0, 60), timestamp: now }],
+  };
+  const ttl = await redis.ttl(key);
+  await redis.setEx(key, ttl > 0 ? ttl : TTL_SECONDS, JSON.stringify(updated));
+  return res.status(200).json(updated);
+}
+
+function normalizePaymentLinkRecord(
+  record: Partial<PaymentLinkRecord>
+): PaymentLinkRecord {
+  const createdAt = record.createdAt ?? new Date().toISOString();
+
+  return {
+    token: record.token ?? "",
+    emvPayload: record.emvPayload ?? "",
+    createdAt,
+    expiresAt:
+      record.expiresAt ??
+      new Date(new Date(createdAt).getTime() + TTL_SECONDS * 1000).toISOString(),
+    updatedAt: record.updatedAt ?? createdAt,
+    isActive: record.isActive !== false,
+    status: record.status ?? "created",
+    payerName: record.payerName ?? "",
+    recipientName: record.recipientName ?? "",
+    reference: record.reference ?? "",
+    requestedAmount: record.requestedAmount ?? "",
+    amountMode: record.amountMode === "variable" ? "variable" : "fixed",
+    authorizedAmount: record.authorizedAmount ?? "",
+    events:
+      record.events ??
+      [{ status: "created", actor: "creator", timestamp: createdAt }],
+  };
 }

@@ -25,6 +25,17 @@ Merchant category selectors share an expanded ISO 18245 MCC catalog. EMV merchan
 stores the selected four-digit MCC in tag 52; the category definitions themselves are maintained by
 ISO rather than EMVCo.
 
+## Shared transaction sessions
+
+When the payment-link API is available, scenario QR codes create a shared 15-minute transaction
+session. A second signed-in browser or device can scan the QR in the Scanner section or open the
+payment link, then mark it scanned, authorize or decline it, cancel or expire it, and simulate a
+refund. The creator polls the shared token and reflects those updates, including the event history
+and authorized payer-entered amount.
+
+Embedded-payload QR links still resolve when the token API is unavailable, but their lifecycle is
+local to that browser and cannot synchronize across sessions.
+
 Generated sandbox payloads retain the observed BiMPay-oriented values `bb.org.cb.mpqr`, `QRBB`,
 and the historical test routes `TESTROC1`/`333331` and `TESTROC2`/`333332`. Profile names,
 account references, and transaction state remain synthetic.

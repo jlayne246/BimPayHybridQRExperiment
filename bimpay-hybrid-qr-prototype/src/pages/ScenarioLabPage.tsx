@@ -11,6 +11,7 @@ import {
 import type { SandboxPaymentRequest } from "../lib/sandboxEmv";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { MERCHANT_CATEGORY_OPTIONS } from "../data/merchantCategories";
+import { readJsonOrError, readJsonResponse } from "../lib/http";
 
 type ScenarioMode = "interpersonal" | "merchant";
 type MerchantSource = "preset" | "custom";
@@ -55,6 +56,22 @@ interface SimulatedTransaction {
 
 interface PaymentLinkRecord {
   token: string;
+  emvPayload: string;
+  createdAt: string;
+  expiresAt: string;
+  updatedAt: string;
+  status: Exclude<RequestState, "ready">;
+  payerName: string;
+  recipientName: string;
+  reference: string;
+  requestedAmount: string;
+  amountMode: AmountMode;
+  authorizedAmount: string;
+  events: Array<{
+    status: Exclude<RequestState, "ready">;
+    actor: string;
+    timestamp: string;
+  }>;
 }
 
 type RecipientProfile = PersonProfile | MerchantProfile;
@@ -126,6 +143,8 @@ export default function ScenarioLabPage() {
   const [reference, setReference] = useState("Lunch split");
   const [requestState, setRequestState] = useState<RequestState>("ready");
   const [requestCreatedAt, setRequestCreatedAt] = useState("");
+  const [sharedToken, setSharedToken] = useState("");
+  const [sharedSession, setSharedSession] = useState<PaymentLinkRecord | null>(null);
   const [qr, setQr] = useState("");
   const [paymentLink, setPaymentLink] = useState("");
   const [payload, setPayload] = useState("");
@@ -200,6 +219,24 @@ export default function ScenarioLabPage() {
   useEffect(() => {
     localStorage.setItem(CUSTOM_MERCHANTS_STORAGE_KEY, JSON.stringify(customMerchants));
   }, [customMerchants]);
+
+  useEffect(() => {
+    if (!sharedToken) return;
+
+    const interval = window.setInterval(() => {
+      void fetch(`/api/payment-links?t=${encodeURIComponent(sharedToken)}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      })
+        .then((response) => readJsonOrError<PaymentLinkRecord>(response))
+        .then((record) => syncSharedSession(record))
+        .catch(() => {
+          setMessage("Shared session could not be refreshed. It may have expired.");
+        });
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [sharedToken]);
 
   function switchMode(nextMode: ScenarioMode): void {
     setMode(nextMode);
@@ -361,6 +398,8 @@ export default function ScenarioLabPage() {
     setRequestState("ready");
     setRequestCreatedAt("");
     setPayerEnteredAmount("");
+    setSharedToken("");
+    setSharedSession(null);
     setQr("");
     setPaymentLink("");
     setPayload("");
@@ -384,14 +423,23 @@ export default function ScenarioLabPage() {
 
     try {
       const response = await fetch("/api/payment-links", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emvPayload }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            emvPayload,
+            payerName: payer.name,
+            recipientName: recipient.name,
+            reference,
+            requestedAmount: amountMode === "variable" ? "" : amount,
+            amountMode: mode === "interpersonal" ? "fixed" : amountMode,
+          }),
       });
 
       if (response.ok) {
-        const record = (await response.json()) as PaymentLinkRecord;
+        const record = await readJsonResponse<PaymentLinkRecord>(response);
         link = `${window.location.origin}/pay?t=${record.token}&emv=${encodeURIComponent(emvPayload)}`;
+        setSharedToken(record.token);
+        setSharedSession(record);
       }
     } catch {
       // The embedded payload link remains usable when the token service is offline.
@@ -411,7 +459,32 @@ export default function ScenarioLabPage() {
     setMessage("Payment request created. Mark it scanned to continue the lifecycle.");
   }
 
-  function transitionRequest(nextState: RequestState): void {
+  function syncSharedSession(record: PaymentLinkRecord): void {
+    setSharedSession(record);
+    setRequestState(record.status);
+    setRequestCreatedAt(record.createdAt);
+
+    if (["authorized", "declined", "expired", "cancelled", "refunded"].includes(record.status)) {
+      const transaction: SimulatedTransaction = {
+        id: `shared-${record.token}`,
+        mode,
+        payer: record.payerName || payer.name,
+        recipient: record.recipientName || recipient.name,
+        amount: record.authorizedAmount || record.requestedAmount || "0.00",
+        reference: record.reference || reference,
+        status: record.status as SimulatedTransaction["status"],
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        receiptNumber: `SBX-${record.token.toUpperCase()}`,
+      };
+      setTransactions((current) => [
+        transaction,
+        ...current.filter((item) => item.id !== transaction.id),
+      ]);
+    }
+  }
+
+  async function transitionRequest(nextState: RequestState): Promise<void> {
     if (
       nextState === "authorized" &&
       amountMode === "variable" &&
@@ -424,6 +497,29 @@ export default function ScenarioLabPage() {
     const now = new Date().toISOString();
     const finalAmount =
       amountMode === "variable" && mode !== "interpersonal" ? payerEnteredAmount : amount;
+
+    if (sharedToken && nextState !== "ready") {
+      try {
+        const response = await fetch(
+          `/api/payment-links?t=${encodeURIComponent(sharedToken)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: nextState,
+              actor: payer.name,
+              authorizedAmount: finalAmount,
+            }),
+          }
+        );
+        syncSharedSession(await readJsonOrError<PaymentLinkRecord>(response));
+        setMessage(`Shared transaction session moved to ${nextState}.`);
+        return;
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Could not update shared session.");
+        return;
+      }
+    }
 
     if (["authorized", "declined", "expired", "cancelled"].includes(nextState)) {
       const transaction: SimulatedTransaction = {
@@ -632,6 +728,40 @@ export default function ScenarioLabPage() {
               {message && (
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
                   {message}
+                </div>
+              )}
+
+              {sharedSession && (
+                <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-black text-indigo-950">Live shared session</div>
+                      <div className="mt-1 text-xs text-indigo-700">
+                        Token <span className="font-mono">{sharedSession.token}</span> · expires{" "}
+                        {new Date(sharedSession.expiresAt).toLocaleTimeString()}
+                      </div>
+                    </div>
+                    <StatusBadge state={sharedSession.status} />
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-indigo-800">
+                    Another signed-in browser can scan this QR in the Scanner section or open its
+                    payment link. Updates are checked every two seconds.
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    {sharedSession.events.slice(-3).reverse().map((event, index) => (
+                      <div
+                        className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs"
+                        key={`${event.timestamp}-${event.status}-${index}`}
+                      >
+                        <span className="font-bold text-slate-800">
+                          {event.status} by {event.actor}
+                        </span>
+                        <span className="text-slate-500">
+                          {new Date(event.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

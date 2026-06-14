@@ -4,6 +4,7 @@ import {
 } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { AuthContext } from "./auth-context";
+import { readJsonResponse } from "../lib/http";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -21,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           cache: "no-store",
           credentials: "same-origin",
         });
-        const result = (await response.json()) as { authenticated?: boolean };
+        const result = await readJsonResponse<{ authenticated?: boolean }>(response);
 
         if (!cancelled) {
           setAuthenticated(response.ok && result.authenticated === true);
@@ -55,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        const result = (await response.json()) as { error?: string };
+        const result = await readJsonResponse<{ error?: string }>(response);
         throw new Error(result.error || "Sign in failed.");
       }
 
