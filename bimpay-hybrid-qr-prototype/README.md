@@ -78,6 +78,11 @@ idempotency keys make safe retries return the original result instead of applyin
 Full-state publishing remains available for workspace configuration changes such as profile setup
 and sandbox resets.
 
+The Profile Scenario Lab uses the same invited workspace membership. Collaborators can explicitly
+load and publish custom people, custom merchants, and simulated scenario history. Those scenario
+records are stored separately from wallet balances and wallet ledger entries, so moving a QR request
+through authorized or refunded states does not itself move simulated wallet funds.
+
 The existing Redis integration remains limited to short-lived payment-link sessions. Supabase
 stores durable collaborative wallet workspaces.
 

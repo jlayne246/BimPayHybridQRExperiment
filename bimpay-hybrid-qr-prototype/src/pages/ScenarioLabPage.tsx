@@ -14,10 +14,15 @@ import {
 } from "../lib/sandboxEmv";
 import type { SandboxPaymentRequest } from "../lib/sandboxEmv";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
+import { ScenarioCollaborationPanel } from "../components/ScenarioCollaborationPanel";
 import { MERCHANT_CATEGORY_OPTIONS } from "../data/merchantCategories";
 import { readJsonOrError, readJsonResponse } from "../lib/http";
+import type {
+  ScenarioLabState,
+  ScenarioMode,
+  SimulatedScenarioTransaction,
+} from "../types/scenario";
 
-type ScenarioMode = "interpersonal" | "merchant";
 type MerchantSource = "preset" | "custom";
 type AmountMode = "fixed" | "variable";
 type RequestState =
@@ -45,19 +50,6 @@ interface CustomPersonFields {
   route: TestRoute;
 }
 
-interface SimulatedTransaction {
-  id: string;
-  mode: ScenarioMode;
-  payer: string;
-  recipient: string;
-  amount: string;
-  reference: string;
-  status: Exclude<RequestState, "ready" | "created" | "scanned">;
-  createdAt: string;
-  updatedAt: string;
-  receiptNumber: string;
-}
-
 interface PaymentLinkRecord {
   token: string;
   emvPayload: string;
@@ -82,6 +74,7 @@ type RecipientProfile = AccountProfile | MerchantProfile;
 
 const CUSTOM_PEOPLE_STORAGE_KEY = "bimpay-sandbox-custom-people";
 const CUSTOM_MERCHANTS_STORAGE_KEY = "bimpay-sandbox-custom-merchants";
+const SCENARIO_TRANSACTIONS_STORAGE_KEY = "bimpay-sandbox-scenario-transactions";
 
 const TEST_ROUTES: Record<
   TestRoute,
@@ -153,7 +146,14 @@ export default function ScenarioLabPage() {
   const [paymentLink, setPaymentLink] = useState("");
   const [payload, setPayload] = useState("");
   const [message, setMessage] = useState("");
-  const [transactions, setTransactions] = useState<SimulatedTransaction[]>([]);
+  const [transactions, setTransactions] = useState<SimulatedScenarioTransaction[]>(() => {
+    try {
+      const stored = localStorage.getItem(SCENARIO_TRANSACTIONS_STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as SimulatedScenarioTransaction[]) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const accountProfiles = useMemo(
     () => [...ACCOUNT_PROFILES, ...customPeople],
@@ -238,6 +238,10 @@ export default function ScenarioLabPage() {
   useEffect(() => {
     localStorage.setItem(CUSTOM_MERCHANTS_STORAGE_KEY, JSON.stringify(customMerchants));
   }, [customMerchants]);
+
+  useEffect(() => {
+    localStorage.setItem(SCENARIO_TRANSACTIONS_STORAGE_KEY, JSON.stringify(transactions));
+  }, [transactions]);
 
   useEffect(() => {
     if (!sharedToken) return;
@@ -326,7 +330,7 @@ export default function ScenarioLabPage() {
       profile,
     ]);
     setSavedMerchantId(existingId);
-    setMerchantMessage(`${profile.name} was saved in this browser.`);
+    setMerchantMessage(`${profile.name} was saved locally. Publish to share it.`);
   }
 
   function loadCustomMerchant(profileId: string): void {
@@ -396,7 +400,9 @@ export default function ScenarioLabPage() {
       accountReference: "",
       route: customPerson.route,
     });
-    setProfileMessage(`${normalizedName} is now available in the payer and recipient lists.`);
+    setProfileMessage(
+      `${normalizedName} is available locally. Publish the scenario workspace to share it.`
+    );
   }
 
   function removeCustomPerson(profileId: string): void {
@@ -484,14 +490,14 @@ export default function ScenarioLabPage() {
     setRequestCreatedAt(record.createdAt);
 
     if (["authorized", "declined", "expired", "cancelled", "refunded"].includes(record.status)) {
-      const transaction: SimulatedTransaction = {
+      const transaction: SimulatedScenarioTransaction = {
         id: `shared-${record.token}`,
         mode,
         payer: record.payerName || payer.name,
         recipient: record.recipientName || recipient.name,
         amount: record.authorizedAmount || record.requestedAmount || "0.00",
         reference: record.reference || reference,
-        status: record.status as SimulatedTransaction["status"],
+        status: record.status as SimulatedScenarioTransaction["status"],
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
         receiptNumber: `SBX-${record.token.toUpperCase()}`,
@@ -541,14 +547,14 @@ export default function ScenarioLabPage() {
     }
 
     if (["authorized", "declined", "expired", "cancelled"].includes(nextState)) {
-      const transaction: SimulatedTransaction = {
+      const transaction: SimulatedScenarioTransaction = {
         id: crypto.randomUUID(),
         mode,
         payer: payer.name,
         recipient: recipient.name,
         amount: finalAmount || "0.00",
         reference,
-        status: nextState as SimulatedTransaction["status"],
+        status: nextState as SimulatedScenarioTransaction["status"],
         createdAt: requestCreatedAt || now,
         updatedAt: now,
         receiptNumber: `SBX-${now.replace(/\D/g, "").slice(2, 14)}`,
@@ -589,6 +595,17 @@ export default function ScenarioLabPage() {
       <div className="mt-6">
         <ExperimentalWarning />
       </div>
+
+      <ScenarioCollaborationPanel
+        state={{ customPeople, customMerchants, transactions }}
+        onLoad={(state: ScenarioLabState) => {
+          setCustomPeople(state.customPeople);
+          setCustomMerchants(state.customMerchants);
+          setTransactions(state.transactions);
+          setSavedMerchantId("");
+          clearGeneratedRequest();
+        }}
+      />
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="space-y-6">
@@ -802,7 +819,9 @@ export default function ScenarioLabPage() {
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-black text-slate-950">Simulated transaction history</h2>
-            <p className="mt-1 text-sm text-slate-600">Current browser session only.</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Browser-local until published to a shared scenario workspace.
+            </p>
             <div className="mt-5 space-y-3">
               {transactions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
@@ -1102,7 +1121,7 @@ function LifecycleButton({
   );
 }
 
-function ReceiptCard({ transaction }: { transaction: SimulatedTransaction }) {
+function ReceiptCard({ transaction }: { transaction: SimulatedScenarioTransaction }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-emerald-200 bg-white shadow-sm">
       <div className="bg-emerald-700 p-6 text-white">
