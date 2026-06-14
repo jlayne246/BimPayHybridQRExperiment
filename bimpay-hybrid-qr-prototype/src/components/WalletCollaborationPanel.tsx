@@ -17,14 +17,19 @@ import {
 } from "../lib/walletCloud";
 import type { SharedWorkspace } from "../lib/walletCloud";
 import type { SharedWorkspaceMember } from "../lib/walletCloud";
+import type { SharedWorkspaceSession } from "../lib/walletCloud";
 import type { WalletLabState } from "../types/wallet";
 
 export function WalletCollaborationPanel({
   state,
   onLoad,
+  session,
+  onSessionChange,
 }: {
   state: WalletLabState;
   onLoad: (state: WalletLabState) => void;
+  session: SharedWorkspaceSession | null;
+  onSessionChange: (session: SharedWorkspaceSession | null) => void;
 }) {
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
@@ -77,6 +82,7 @@ export function WalletCollaborationPanel({
       } else {
         setWorkspaces([]);
         setWorkspaceId("");
+        onSessionChange(null);
       }
     });
 
@@ -84,11 +90,14 @@ export function WalletCollaborationPanel({
       active = false;
       subscription.unsubscribe();
     };
-  }, [refreshWorkspaces]);
+  }, [onSessionChange, refreshWorkspaces]);
 
   useEffect(() => {
     if (!workspaceId || !user) return;
-    const channel = subscribeToSharedWorkspace(workspaceId, () => {
+    const channel = subscribeToSharedWorkspace(workspaceId, (revision) => {
+      if (session?.workspaceId === workspaceId && revision <= session.revision) {
+        return;
+      }
       if (suppressNextRealtime.current) {
         suppressNextRealtime.current = false;
         return;
@@ -103,7 +112,7 @@ export function WalletCollaborationPanel({
       window.clearTimeout(memberRefresh);
       void unsubscribeFromSharedWorkspace(channel);
     };
-  }, [refreshMembers, user, workspaceId]);
+  }, [refreshMembers, session, user, workspaceId]);
 
   async function requestMagicLink(): Promise<void> {
     if (!email.trim()) {
@@ -131,9 +140,10 @@ export function WalletCollaborationPanel({
     setMessage("");
     try {
       const id = await createSharedWorkspace(workspaceName.trim());
-      await publishSharedWalletState(id, state);
+      const revision = await publishSharedWalletState(id, state, 0);
       await refreshWorkspaces();
       setWorkspaceId(id);
+      onSessionChange({ workspaceId: id, role: "owner", revision });
       setRemoteChanged(false);
       setMessage("Shared workspace created from the current local wallet state.");
     } catch (error) {
@@ -148,8 +158,17 @@ export function WalletCollaborationPanel({
     setBusy(true);
     setMessage("");
     try {
-      const sharedState = await loadSharedWalletState(workspaceId);
-      onLoad(sharedState);
+      const snapshot = await loadSharedWalletState(workspaceId);
+      onLoad(snapshot.state);
+      const selectedWorkspace = workspaces.find(
+        (workspace) => workspace.id === workspaceId
+      );
+      if (!selectedWorkspace) throw new Error("Shared workspace access was not found.");
+      onSessionChange({
+        workspaceId,
+        role: selectedWorkspace.role,
+        revision: snapshot.revision,
+      });
       setRemoteChanged(false);
       setMessage("Shared wallet state loaded into this browser.");
     } catch (error) {
@@ -160,18 +179,33 @@ export function WalletCollaborationPanel({
   }
 
   async function publishWorkspace(): Promise<void> {
-    if (!workspaceId) return;
+    if (!workspaceId || !session || session.workspaceId !== workspaceId) {
+      setMessage("Load the shared workspace before publishing local changes.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
       suppressNextRealtime.current = true;
-      await publishSharedWalletState(workspaceId, state);
+      const revision = await publishSharedWalletState(
+        workspaceId,
+        state,
+        session.revision
+      );
+      onSessionChange({ ...session, revision });
       await refreshWorkspaces();
       setRemoteChanged(false);
       setMessage("Current local wallet state published to collaborators.");
     } catch (error) {
       suppressNextRealtime.current = false;
-      setMessage(error instanceof Error ? error.message : "Could not publish shared state.");
+      setRemoteChanged(true);
+      setMessage(
+        error instanceof Error && error.message.includes("revision conflict")
+          ? "A collaborator published first. Load the newer shared state before publishing again."
+          : error instanceof Error
+            ? error.message
+            : "Could not publish shared state."
+      );
     } finally {
       setBusy(false);
     }
@@ -215,6 +249,7 @@ export function WalletCollaborationPanel({
     setBusy(true);
     try {
       await signOutCloud();
+      onSessionChange(null);
       setMessage("Collaboration account signed out. The private site session remains active.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out.");
@@ -294,6 +329,7 @@ export function WalletCollaborationPanel({
                 onChange={(event) => {
                   setWorkspaceId(event.target.value);
                   setRemoteChanged(false);
+                  onSessionChange(null);
                   setMembers([]);
                 }}
               >
@@ -318,6 +354,8 @@ export function WalletCollaborationPanel({
                 disabled={
                   busy ||
                   !workspaceId ||
+                  !session ||
+                  session.workspaceId !== workspaceId ||
                   workspaces.find((workspace) => workspace.id === workspaceId)?.role === "viewer"
                 }
                 onClick={() => void publishWorkspace()}
@@ -330,6 +368,12 @@ export function WalletCollaborationPanel({
                 Shared state changed
               </div>
             )}
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+            Each browser works on a local copy. Loading records the shared revision; publishing
+            succeeds only if nobody else has published a newer revision. A conflict never silently
+            overwrites another collaborator&apos;s balances.
           </div>
 
           <div className="mt-5 border-t border-cyan-200 pt-5">

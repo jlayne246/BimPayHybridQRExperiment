@@ -1,19 +1,29 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { WalletCollaborationPanel } from "../components/WalletCollaborationPanel";
 import { MERCHANTS, PEOPLE } from "../data/sampleProfiles";
+import {
+  adjustSharedBalance,
+  loadSharedWalletState,
+  paySharedMerchant,
+  reloadSharedWallet,
+  transferSharedWallets,
+} from "../lib/walletCloud";
+import type { SharedWorkspaceSession } from "../lib/walletCloud";
 import type {
   BalanceType,
   FundingModel,
   LedgerEntry,
+  ProfileKind,
   SimulatedWallet,
   WalletLabState,
 } from "../types/wallet";
 
-type WalletAction = "reload" | "merchant" | "transfer";
+type WalletAction = "reload" | "merchant" | "transfer" | "adjust";
 
 interface WalletProfileFields {
   ownerName: string;
+  profileKind: ProfileKind;
   model: FundingModel;
   walletBalance: string;
   bankBalance: string;
@@ -26,6 +36,7 @@ interface WalletProfileFields {
 const WALLET_STORAGE_KEY = "bimpay-sandbox-wallet-models-v2";
 const DEFAULT_PROFILE_FIELDS: WalletProfileFields = {
   ownerName: "",
+  profileKind: "person",
   model: "prepaid",
   walletBalance: "100.00",
   bankBalance: "500.00",
@@ -42,6 +53,21 @@ const PROFILE_COLORS = [
   { value: "from-amber-600 to-orange-600", label: "Amber" },
   { value: "from-rose-700 to-pink-600", label: "Rose" },
 ];
+
+const PROFILE_KIND_DETAILS: Record<ProfileKind, { label: string; description: string }> = {
+  person: {
+    label: "Individual",
+    description: "A fictional personal wallet holder.",
+  },
+  charity: {
+    label: "Charity",
+    description: "A fictional nonprofit receiving donations and making program payments.",
+  },
+  church: {
+    label: "Church",
+    description: "A fictional faith organization receiving offerings and paying expenses.",
+  },
+};
 
 const MODEL_DETAILS: Record<
   FundingModel,
@@ -74,6 +100,7 @@ function createInitialState(): WalletLabState {
       {
         id: PEOPLE[0].id,
         ownerName: PEOPLE[0].name,
+        profileKind: "person",
         model: "prepaid",
         walletBalance: 150,
         bankBalance: 850,
@@ -86,6 +113,7 @@ function createInitialState(): WalletLabState {
       {
         id: PEOPLE[1].id,
         ownerName: PEOPLE[1].name,
+        profileKind: "person",
         model: "bank-linked",
         walletBalance: 0,
         bankBalance: 620,
@@ -98,6 +126,7 @@ function createInitialState(): WalletLabState {
       {
         id: PEOPLE[2].id,
         ownerName: PEOPLE[2].name,
+        profileKind: "person",
         model: "hybrid",
         walletBalance: 45,
         bankBalance: 475,
@@ -105,6 +134,32 @@ function createInitialState(): WalletLabState {
         bankDetail: "Checking ending 9031",
         walletIdentifier: "WLT-TEST-9031-7714",
         color: "from-violet-700 to-fuchsia-600",
+        isCustom: false,
+      },
+      {
+        id: "hope-relief-fund",
+        ownerName: "Test Hope Relief Fund",
+        profileKind: "charity",
+        model: "prepaid",
+        walletBalance: 300,
+        bankBalance: 1200,
+        bankName: "Test Community Bank",
+        bankDetail: "Charity account ending 2044",
+        walletIdentifier: "WLT-CHARITY-2044",
+        color: "from-rose-700 to-pink-600",
+        isCustom: false,
+      },
+      {
+        id: "bridgetown-community-church",
+        ownerName: "Test Bridgetown Community Church",
+        profileKind: "church",
+        model: "hybrid",
+        walletBalance: 75,
+        bankBalance: 1500,
+        bankName: "Test Parish Credit Union",
+        bankDetail: "Organization account ending 7712",
+        walletIdentifier: "WLT-CHURCH-7712",
+        color: "from-amber-600 to-orange-600",
         isCustom: false,
       },
     ],
@@ -149,6 +204,46 @@ function createInitialState(): WalletLabState {
         createdAt: now,
         reference: "BANK-OPEN",
       },
+      {
+        id: "opening-hope-wallet",
+        ownerId: "hope-relief-fund",
+        title: "Opening donation wallet balance",
+        detail: "Fictional charity stored value",
+        amount: 300,
+        balanceType: "wallet",
+        createdAt: now,
+        reference: "CHARITY-OPEN",
+      },
+      {
+        id: "opening-hope-bank",
+        ownerId: "hope-relief-fund",
+        title: "Opening linked bank balance",
+        detail: "Fictional charity funding source",
+        amount: 1200,
+        balanceType: "bank",
+        createdAt: now,
+        reference: "CHARITY-OPEN",
+      },
+      {
+        id: "opening-church-wallet",
+        ownerId: "bridgetown-community-church",
+        title: "Opening offering wallet balance",
+        detail: "Fictional church stored value",
+        amount: 75,
+        balanceType: "wallet",
+        createdAt: now,
+        reference: "CHURCH-OPEN",
+      },
+      {
+        id: "opening-church-bank",
+        ownerId: "bridgetown-community-church",
+        title: "Opening linked bank balance",
+        detail: "Fictional church funding source",
+        amount: 1500,
+        balanceType: "bank",
+        createdAt: now,
+        reference: "CHURCH-OPEN",
+      },
     ],
   };
 }
@@ -162,19 +257,35 @@ function loadState(): WalletLabState {
     if (!Array.isArray(parsed.wallets) || !Array.isArray(parsed.ledger)) {
       return createInitialState();
     }
-    return {
-      wallets: parsed.wallets.map((wallet, index) => ({
-        ...wallet,
-        walletIdentifier:
-          wallet.walletIdentifier || `WLT-TEST-${String(index + 1).padStart(4, "0")}`,
-        color: wallet.color || PROFILE_COLORS[index % PROFILE_COLORS.length].value,
-        isCustom: wallet.isCustom === true,
-      })),
-      ledger: parsed.ledger,
-    };
+    return normalizeState(parsed);
   } catch {
     return createInitialState();
   }
+}
+
+function normalizeState(state: WalletLabState): WalletLabState {
+  const baseline = createInitialState();
+  const normalizedWallets = state.wallets.map((wallet, index) => ({
+    ...wallet,
+    profileKind: wallet.profileKind || ("person" as ProfileKind),
+    walletIdentifier:
+      wallet.walletIdentifier || `WLT-TEST-${String(index + 1).padStart(4, "0")}`,
+    color: wallet.color || PROFILE_COLORS[index % PROFILE_COLORS.length].value,
+    isCustom: wallet.isCustom === true,
+  }));
+  const walletIds = new Set(normalizedWallets.map((wallet) => wallet.id));
+  const ledgerIds = new Set(state.ledger.map((entry) => entry.id));
+
+  return {
+    wallets: [
+      ...normalizedWallets,
+      ...baseline.wallets.filter((wallet) => !walletIds.has(wallet.id)),
+    ],
+    ledger: [
+      ...state.ledger,
+      ...baseline.ledger.filter((entry) => !ledgerIds.has(entry.id)),
+    ],
+  };
 }
 
 function formatMoney(value: number): string {
@@ -206,6 +317,13 @@ export default function WalletLabPage() {
   const [profileFields, setProfileFields] =
     useState<WalletProfileFields>(DEFAULT_PROFILE_FIELDS);
   const [profileMessage, setProfileMessage] = useState("");
+  const [sharedSession, setSharedSession] = useState<SharedWorkspaceSession | null>(null);
+  const [transactionBusy, setTransactionBusy] = useState(false);
+  const [adjustmentBalanceType, setAdjustmentBalanceType] =
+    useState<BalanceType>("wallet");
+  const pendingRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(
+    null
+  );
 
   const activeWallet =
     lab.wallets.find((wallet) => wallet.id === activeWalletId) ?? lab.wallets[0];
@@ -246,6 +364,7 @@ export default function WalletLabPage() {
     setEditingProfileId(wallet.id);
     setProfileFields({
       ownerName: wallet.ownerName,
+      profileKind: wallet.profileKind,
       model: wallet.model,
       walletBalance: wallet.walletBalance.toFixed(2),
       bankBalance: wallet.bankBalance.toFixed(2),
@@ -307,6 +426,7 @@ export default function WalletLabPage() {
     const wallet: SimulatedWallet = {
       id: profileId,
       ownerName: profileFields.ownerName.trim().slice(0, 60),
+      profileKind: profileFields.profileKind,
       model: profileFields.model,
       walletBalance: balances.walletBalance,
       bankBalance: balances.bankBalance,
@@ -398,6 +518,7 @@ export default function WalletLabPage() {
     setEditingProfileId("");
     setProfileFields({
       ownerName: `${wallet.ownerName} Copy`,
+      profileKind: wallet.profileKind,
       model: wallet.model,
       walletBalance: wallet.walletBalance.toFixed(2),
       bankBalance: wallet.bankBalance.toFixed(2),
@@ -562,11 +683,142 @@ export default function WalletLabPage() {
     };
   }
 
-  function submitTransaction(): void {
+  async function refreshSharedState(
+    session: SharedWorkspaceSession
+  ): Promise<WalletLabState> {
+    const snapshot = await loadSharedWalletState(session.workspaceId);
+    persist(snapshot.state);
+    setSharedSession({ ...session, revision: snapshot.revision });
+    return snapshot.state;
+  }
+
+  async function submitSharedTransaction(transactionAmount: number): Promise<void> {
+    if (!sharedSession) return;
+    if (sharedSession.role === "viewer") {
+      setMessage("Viewers cannot execute shared wallet transactions.");
+      return;
+    }
+
+    const reference = makeReference(
+      action === "reload"
+        ? "TOPUP"
+        : action === "merchant"
+          ? "PAY"
+          : action === "transfer"
+            ? "SEND"
+            : "ADJUST"
+    );
+    const detail =
+      note.trim() ||
+      (action === "merchant" ? selectedMerchant.category : "Cross-wallet transfer");
+    const fingerprint = JSON.stringify({
+      workspaceId: sharedSession.workspaceId,
+      action,
+      activeWalletId: activeWallet.id,
+      recipientId: action === "transfer" ? recipientWallet.id : "",
+      merchantId: action === "merchant" ? selectedMerchant.id : "",
+      adjustmentBalanceType: action === "adjust" ? adjustmentBalanceType : "",
+      transactionAmount,
+      detail,
+    });
+    const idempotencyKey =
+      pendingRequestRef.current?.fingerprint === fingerprint
+        ? pendingRequestRef.current.idempotencyKey
+        : crypto.randomUUID();
+    pendingRequestRef.current = { fingerprint, idempotencyKey };
+
+    setTransactionBusy(true);
+    setMessage("");
+    try {
+      const result =
+        action === "reload"
+          ? await reloadSharedWallet({
+              workspaceId: sharedSession.workspaceId,
+              profileId: activeWallet.id,
+              amount: transactionAmount,
+              reference,
+              idempotencyKey,
+            })
+          : action === "merchant"
+            ? await paySharedMerchant({
+                workspaceId: sharedSession.workspaceId,
+                payerProfileId: activeWallet.id,
+                amount: transactionAmount,
+                merchantName: selectedMerchant.name,
+                detail,
+                reference,
+                idempotencyKey,
+              })
+            : action === "transfer"
+              ? await transferSharedWallets({
+                workspaceId: sharedSession.workspaceId,
+                payerProfileId: activeWallet.id,
+                recipientProfileId: recipientWallet.id,
+                amount: transactionAmount,
+                detail,
+                reference,
+                idempotencyKey,
+              })
+              : await adjustSharedBalance({
+                  workspaceId: sharedSession.workspaceId,
+                  profileId: activeWallet.id,
+                  balanceType: adjustmentBalanceType,
+                  amount: transactionAmount,
+                  reason: note.trim() || "Explicit sandbox balance adjustment",
+                  reference,
+                  idempotencyKey,
+                });
+
+      try {
+        await refreshSharedState({ ...sharedSession, revision: result.revision });
+      } catch {
+        setMessage(
+          "The transaction committed, but this browser could not refresh. Use Load shared before continuing; retrying the same form remains idempotent."
+        );
+        return;
+      }
+      pendingRequestRef.current = null;
+      setMessage(
+        action === "reload"
+          ? `${formatMoney(transactionAmount)} was atomically moved from bank funds into stored value.`
+          : action === "merchant"
+            ? `${formatMoney(transactionAmount)} was atomically paid using ${result.fundingDescription ?? "the configured funding model"}.`
+            : action === "transfer"
+              ? `${formatMoney(transactionAmount)} was atomically transferred to ${recipientWallet.ownerName}.`
+              : `${formatMoney(transactionAmount)} adjusted the ${adjustmentBalanceType} balance atomically.`
+      );
+      setNote("");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "The shared transaction could not be completed."
+      );
+    } finally {
+      setTransactionBusy(false);
+    }
+  }
+
+  async function submitTransaction(): Promise<void> {
     const numericAmount = Number(amount);
     const transactionAmount = roundMoney(numericAmount);
-    if (!Number.isFinite(numericAmount) || transactionAmount <= 0 || transactionAmount > 5000) {
-      setMessage("Enter an amount from $0.01 to $5,000.00 BBD.");
+    const amountIsInvalid =
+      action === "adjust"
+        ? !Number.isFinite(numericAmount) ||
+          transactionAmount === 0 ||
+          Math.abs(transactionAmount) > 100000
+        : !Number.isFinite(numericAmount) ||
+          transactionAmount <= 0 ||
+          transactionAmount > 5000;
+    if (amountIsInvalid) {
+      setMessage(
+        action === "adjust"
+          ? "Enter a non-zero adjustment from -$100,000.00 to $100,000.00 BBD."
+          : "Enter an amount from $0.01 to $5,000.00 BBD."
+      );
+      return;
+    }
+
+    if (sharedSession) {
+      await submitSharedTransaction(transactionAmount);
       return;
     }
 
@@ -700,6 +952,8 @@ export default function WalletLabPage() {
 
       <WalletCollaborationPanel
         state={lab}
+        session={sharedSession}
+        onSessionChange={setSharedSession}
         onLoad={(sharedState) => {
           persist(sharedState);
           const firstWallet = sharedState.wallets[0];
@@ -747,7 +1001,7 @@ export default function WalletLabPage() {
                 type="button"
                 onClick={() => selectWallet(wallet.id)}
               >
-                <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                   <div className="font-black">{wallet.ownerName}</div>
                   {wallet.isCustom && (
                     <span
@@ -760,6 +1014,13 @@ export default function WalletLabPage() {
                       Custom
                     </span>
                   )}
+                </div>
+                <div
+                  className={`mt-2 text-[0.68rem] font-black uppercase tracking-[0.12em] ${
+                    wallet.id === activeWallet.id ? "text-cyan-300" : "text-slate-400"
+                  }`}
+                >
+                  {PROFILE_KIND_DETAILS[wallet.profileKind].label}
                 </div>
                 <div
                   className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-black ${
@@ -862,6 +1123,20 @@ export default function WalletLabPage() {
               }
             />
             <SelectField
+              label="Profile type"
+              value={profileFields.profileKind}
+              onChange={(value) =>
+                setProfileFields((current) => ({
+                  ...current,
+                  profileKind: value as ProfileKind,
+                }))
+              }
+              options={Object.entries(PROFILE_KIND_DETAILS).map(([value, details]) => ({
+                value,
+                label: `${details.label} - ${details.description}`,
+              }))}
+            />
+            <SelectField
               label="Funding model"
               value={profileFields.model}
               onChange={(value) =>
@@ -932,6 +1207,7 @@ export default function WalletLabPage() {
               {profileFields.ownerName.trim() || "Custom wallet"}
             </div>
             <div className="mt-1 text-sm text-white/80">
+              {PROFILE_KIND_DETAILS[profileFields.profileKind].label} /{" "}
               {MODEL_DETAILS[profileFields.model].label} /{" "}
               {profileFields.walletIdentifier || "Wallet ID pending"}
             </div>
@@ -966,6 +1242,9 @@ export default function WalletLabPage() {
                   {formatMoney(totalAvailable)}
                 </div>
                 <div className="mt-2 text-sm text-slate-400">{activeWallet.ownerName}</div>
+                <div className="mt-1 text-xs font-black uppercase tracking-wide text-cyan-300">
+                  {PROFILE_KIND_DETAILS[activeWallet.profileKind].label}
+                </div>
               </div>
               <span className="rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white">
                 {MODEL_DETAILS[activeWallet.model].shortLabel}
@@ -1010,6 +1289,11 @@ export default function WalletLabPage() {
             <ActionButton active={action === "transfer"} onClick={() => switchAction("transfer")}>
               Send to wallet
             </ActionButton>
+            {sharedSession && sharedSession.role !== "viewer" && (
+              <ActionButton active={action === "adjust"} onClick={() => switchAction("adjust")}>
+                Adjust balance
+              </ActionButton>
+            )}
           </div>
 
           <div className="mt-8">
@@ -1018,14 +1302,18 @@ export default function WalletLabPage() {
                 ? "Move bank funds into stored value"
                 : action === "merchant"
                   ? "Merchant payment"
-                  : "Cross-model wallet transfer"}
+                  : action === "transfer"
+                    ? "Cross-model wallet transfer"
+                    : "Explicit sandbox adjustment"}
             </div>
             <h2 className="mt-2 text-2xl font-black text-slate-950">
               {action === "reload"
                 ? `Reload ${activeWallet.ownerName}'s wallet`
                 : action === "merchant"
                   ? "Choose a fictional merchant"
-                  : "Choose any other wallet model"}
+                  : action === "transfer"
+                    ? "Choose any other wallet model"
+                    : `Adjust ${activeWallet.ownerName}'s recorded balance`}
             </h2>
           </div>
 
@@ -1050,13 +1338,26 @@ export default function WalletLabPage() {
                   .filter((wallet) => wallet.id !== activeWallet.id)
                   .map((wallet) => ({
                     value: wallet.id,
-                    label: `${wallet.ownerName} - ${MODEL_DETAILS[wallet.model].label}`,
+                    label: `${wallet.ownerName} - ${PROFILE_KIND_DETAILS[wallet.profileKind].label} / ${MODEL_DETAILS[wallet.model].label}`,
                   }))}
+              />
+            )}
+            {action === "adjust" && (
+              <SelectField
+                label="Balance to adjust"
+                value={adjustmentBalanceType}
+                onChange={(value) => setAdjustmentBalanceType(value as BalanceType)}
+                options={[
+                  { value: "wallet", label: "Stored wallet balance" },
+                  { value: "bank", label: "Linked bank balance" },
+                ]}
               />
             )}
 
             <label className="block">
-              <span className="text-sm font-black text-slate-700">Amount (BBD)</span>
+              <span className="text-sm font-black text-slate-700">
+                {action === "adjust" ? "Adjustment amount (BBD)" : "Amount (BBD)"}
+              </span>
               <div className="mt-2 flex overflow-hidden rounded-2xl border border-slate-300 bg-white focus-within:border-emerald-600 focus-within:ring-4 focus-within:ring-emerald-100">
                 <span className="grid place-items-center bg-slate-50 px-4 font-black text-slate-500">
                   $
@@ -1089,7 +1390,13 @@ export default function WalletLabPage() {
                 <input
                   className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
                   maxLength={60}
-                  placeholder={action === "merchant" ? "Order reference" : "What is this for?"}
+                  placeholder={
+                    action === "merchant"
+                      ? "Order reference"
+                      : action === "adjust"
+                        ? "Reason for this sandbox adjustment"
+                        : "What is this for?"
+                  }
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                 />
@@ -1099,13 +1406,18 @@ export default function WalletLabPage() {
             <button
               className="w-full rounded-2xl bg-emerald-700 px-5 py-4 text-sm font-black text-white transition hover:bg-emerald-800"
               type="button"
-              onClick={submitTransaction}
+              disabled={transactionBusy || sharedSession?.role === "viewer"}
+              onClick={() => void submitTransaction()}
             >
-              {action === "reload"
+              {transactionBusy
+                ? "Processing atomically..."
+                : action === "reload"
                 ? "Move bank funds to wallet"
                 : action === "merchant"
                   ? `Pay with ${MODEL_DETAILS[activeWallet.model].shortLabel.toLowerCase()} funding`
-                  : "Transfer between wallet models"}
+                  : action === "transfer"
+                    ? "Transfer between wallet models"
+                    : "Apply atomic balance adjustment"}
             </button>
 
             {message && (

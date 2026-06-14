@@ -7,6 +7,27 @@ export interface SharedWorkspace {
   name: string;
   role: "owner" | "editor" | "viewer";
   updatedAt: string;
+  revision: number;
+}
+
+export interface SharedWalletSnapshot {
+  state: WalletLabState;
+  revision: number;
+}
+
+export interface SharedWorkspaceSession {
+  workspaceId: string;
+  role: SharedWorkspace["role"];
+  revision: number;
+}
+
+export interface AtomicWalletResult {
+  revision: number;
+  amount: number;
+  fundingDescription?: string;
+  recipientBalanceType?: "wallet" | "bank";
+  balanceType?: "wallet" | "bank";
+  resultingBalance?: number;
 }
 
 export interface SharedWorkspaceMember {
@@ -18,8 +39,8 @@ export interface SharedWorkspaceMember {
 interface WorkspaceMembershipRow {
   role: SharedWorkspace["role"];
   workspaces:
-    | { id: string; name: string; updated_at: string }
-    | Array<{ id: string; name: string; updated_at: string }>
+    | { id: string; name: string; updated_at: string; revision: number }
+    | Array<{ id: string; name: string; updated_at: string; revision: number }>
     | null;
 }
 
@@ -56,7 +77,7 @@ export async function listSharedWorkspaces(): Promise<SharedWorkspace[]> {
   const client = requireSupabase();
   const { data, error } = await client
     .from("workspace_members")
-    .select("role, workspaces!inner(id, name, updated_at)")
+    .select("role, workspaces!inner(id, name, updated_at, revision)")
     .order("created_at", { ascending: true });
   if (error) throw error;
 
@@ -71,6 +92,7 @@ export async function listSharedWorkspaces(): Promise<SharedWorkspace[]> {
             name: workspace.name,
             role: membership.role,
             updatedAt: workspace.updated_at,
+            revision: Number(workspace.revision),
           },
         ]
       : [];
@@ -125,9 +147,12 @@ export async function removeSharedWorkspaceMember(
   if (error) throw error;
 }
 
-export async function loadSharedWalletState(workspaceId: string): Promise<WalletLabState> {
+export async function loadSharedWalletState(
+  workspaceId: string
+): Promise<SharedWalletSnapshot> {
   const client = requireSupabase();
-  const [walletResult, ledgerResult] = await Promise.all([
+  const [workspaceResult, walletResult, ledgerResult] = await Promise.all([
+    client.from("workspaces").select("revision").eq("id", workspaceId).single(),
     client
       .from("wallet_profiles")
       .select("*")
@@ -139,12 +164,14 @@ export async function loadSharedWalletState(workspaceId: string): Promise<Wallet
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false }),
   ]);
+  if (workspaceResult.error) throw workspaceResult.error;
   if (walletResult.error) throw walletResult.error;
   if (ledgerResult.error) throw ledgerResult.error;
 
   const wallets: SimulatedWallet[] = (walletResult.data ?? []).map((row) => ({
     id: row.profile_id,
     ownerName: row.owner_name,
+    profileKind: row.profile_kind ?? "person",
     model: row.funding_model,
     walletBalance: Number(row.wallet_balance),
     bankBalance: Number(row.bank_balance),
@@ -167,24 +194,133 @@ export async function loadSharedWalletState(workspaceId: string): Promise<Wallet
   if (wallets.length === 0) {
     throw new Error("This shared workspace does not contain wallet state yet.");
   }
-  return { wallets, ledger };
+  return {
+    state: { wallets, ledger },
+    revision: Number(workspaceResult.data.revision),
+  };
 }
 
 export async function publishSharedWalletState(
   workspaceId: string,
-  state: WalletLabState
-): Promise<void> {
-  const { error } = await requireSupabase().rpc("replace_wallet_lab_state", {
+  state: WalletLabState,
+  expectedRevision: number
+): Promise<number> {
+  const { data, error } = await requireSupabase().rpc("replace_wallet_lab_state", {
     target_workspace_id: workspaceId,
     wallet_rows: state.wallets,
     ledger_rows: state.ledger,
+    expected_revision: expectedRevision,
   });
   if (error) throw error;
+  return Number(data);
+}
+
+function normalizeAtomicResult(data: Record<string, unknown>): AtomicWalletResult {
+  return {
+    revision: Number(data.revision),
+    amount: Number(data.amount),
+    fundingDescription:
+      typeof data.fundingDescription === "string" ? data.fundingDescription : undefined,
+    recipientBalanceType:
+      data.recipientBalanceType === "wallet" || data.recipientBalanceType === "bank"
+        ? data.recipientBalanceType
+        : undefined,
+    balanceType:
+      data.balanceType === "wallet" || data.balanceType === "bank"
+        ? data.balanceType
+        : undefined,
+    resultingBalance:
+      data.resultingBalance === undefined ? undefined : Number(data.resultingBalance),
+  };
+}
+
+export async function reloadSharedWallet(input: {
+  workspaceId: string;
+  profileId: string;
+  amount: number;
+  reference: string;
+  idempotencyKey: string;
+}): Promise<AtomicWalletResult> {
+  const { data, error } = await requireSupabase().rpc("reload_wallet", {
+    target_workspace_id: input.workspaceId,
+    target_profile_id: input.profileId,
+    transaction_amount: input.amount,
+    transaction_reference: input.reference,
+    request_idempotency_key: input.idempotencyKey,
+  });
+  if (error) throw error;
+  return normalizeAtomicResult(data as Record<string, unknown>);
+}
+
+export async function paySharedMerchant(input: {
+  workspaceId: string;
+  payerProfileId: string;
+  amount: number;
+  merchantName: string;
+  detail: string;
+  reference: string;
+  idempotencyKey: string;
+}): Promise<AtomicWalletResult> {
+  const { data, error } = await requireSupabase().rpc("pay_merchant", {
+    target_workspace_id: input.workspaceId,
+    payer_profile_id: input.payerProfileId,
+    transaction_amount: input.amount,
+    merchant_name: input.merchantName,
+    transaction_detail: input.detail,
+    transaction_reference: input.reference,
+    request_idempotency_key: input.idempotencyKey,
+  });
+  if (error) throw error;
+  return normalizeAtomicResult(data as Record<string, unknown>);
+}
+
+export async function transferSharedWallets(input: {
+  workspaceId: string;
+  payerProfileId: string;
+  recipientProfileId: string;
+  amount: number;
+  detail: string;
+  reference: string;
+  idempotencyKey: string;
+}): Promise<AtomicWalletResult> {
+  const { data, error } = await requireSupabase().rpc("transfer_between_wallets", {
+    target_workspace_id: input.workspaceId,
+    payer_profile_id: input.payerProfileId,
+    recipient_profile_id: input.recipientProfileId,
+    transaction_amount: input.amount,
+    transaction_detail: input.detail,
+    transaction_reference: input.reference,
+    request_idempotency_key: input.idempotencyKey,
+  });
+  if (error) throw error;
+  return normalizeAtomicResult(data as Record<string, unknown>);
+}
+
+export async function adjustSharedBalance(input: {
+  workspaceId: string;
+  profileId: string;
+  balanceType: "wallet" | "bank";
+  amount: number;
+  reason: string;
+  reference: string;
+  idempotencyKey: string;
+}): Promise<AtomicWalletResult> {
+  const { data, error } = await requireSupabase().rpc("adjust_sandbox_balance", {
+    target_workspace_id: input.workspaceId,
+    target_profile_id: input.profileId,
+    target_balance_type: input.balanceType,
+    adjustment_amount: input.amount,
+    adjustment_reason: input.reason,
+    transaction_reference: input.reference,
+    request_idempotency_key: input.idempotencyKey,
+  });
+  if (error) throw error;
+  return normalizeAtomicResult(data as Record<string, unknown>);
 }
 
 export function subscribeToSharedWorkspace(
   workspaceId: string,
-  onChange: () => void
+  onChange: (revision: number) => void
 ): RealtimeChannel {
   return requireSupabase()
     .channel(`wallet-workspace-${workspaceId}`)
@@ -196,7 +332,10 @@ export function subscribeToSharedWorkspace(
         table: "workspaces",
         filter: `id=eq.${workspaceId}`,
       },
-      onChange
+      (payload) => {
+        const nextRow = payload.new as { revision?: number };
+        onChange(Number(nextRow.revision ?? 0));
+      }
     )
     .subscribe();
 }

@@ -32,6 +32,9 @@ The wallet lab also supports browser-local custom wallet profiles. Custom profil
 edited, cloned, and removed, and can participate in the same merchant payments and cross-model
 transfers as the built-in examples.
 
+Built-in examples include fictional individual, charity, and church profiles. Organization profiles
+can receive wallet transfers or donations, hold simulated balances, and make outgoing payments.
+
 ## Private collaboration with Supabase
 
 The wallet lab can optionally publish its complete wallet/profile/ledger state to an invite-only
@@ -50,7 +53,17 @@ browser storage.
 The Supabase service-role key must never be added to a `VITE_` variable or browser code. Workspace
 owners can grant invited users `editor` or `viewer` access from the Wallet Funding Lab. Publishing
 is explicit rather than automatic: collaborators load shared state, work locally, and publish when
-ready. Realtime notifications indicate when another collaborator has published a newer state.
+ready. Shared workspaces use revision checks, so a stale browser cannot overwrite balances that
+another user published first. Realtime notifications indicate when another collaborator has
+published a newer state.
+
+Ordinary shared wallet operations do not publish browser-calculated snapshots. Reloads, merchant
+payments, wallet transfers, and explicit sandbox balance adjustments execute through atomic
+Supabase database functions. The functions lock affected profiles, recheck funds, update balances,
+append ledger entries, and increment the workspace revision in one transaction. Client-generated
+idempotency keys make safe retries return the original result instead of applying a payment twice.
+Full-state publishing remains available for workspace configuration changes such as profile setup
+and sandbox resets.
 
 The existing Redis integration remains limited to short-lived payment-link sessions. Supabase
 stores durable collaborative wallet workspaces.
