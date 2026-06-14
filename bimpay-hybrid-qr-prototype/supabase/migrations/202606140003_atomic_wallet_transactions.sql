@@ -1,3 +1,10 @@
+/*
+ * Atomic wallet operations and idempotency.
+ *
+ * Each public operation checks workspace edit permission, locks the affected
+ * balances, writes ledger rows, and increments the workspace revision in one
+ * PostgreSQL transaction.
+ */
 create table if not exists public.wallet_transaction_requests (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   idempotency_key text not null,
@@ -44,6 +51,7 @@ begin
     raise exception 'A valid idempotency key is required';
   end if;
 
+  -- The composite primary key makes retries race safely at the database.
   insert into public.wallet_transaction_requests (
     workspace_id,
     idempotency_key,

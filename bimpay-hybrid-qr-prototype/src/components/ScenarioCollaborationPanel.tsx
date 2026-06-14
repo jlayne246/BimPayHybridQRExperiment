@@ -16,6 +16,12 @@ import {
 } from "../lib/scenarioCloud";
 import type { ScenarioLabState } from "../types/scenario";
 
+/**
+ * Explicit load/publish controls for Scenario profiles and terminal history.
+ *
+ * This component reuses Wallet workspace membership and revision notifications,
+ * but never reads or mutates wallet balances.
+ */
 export function ScenarioCollaborationPanel({
   state,
   onLoad,
@@ -115,6 +121,7 @@ export function ScenarioCollaborationPanel({
         role: workspace.role,
         revision: snapshot.revision,
       });
+      // Preserve an editor's unpublished local work when initializing a workspace.
       const sharedIsEmpty =
         snapshot.state.customPeople.length === 0 &&
         snapshot.state.customMerchants.length === 0 &&

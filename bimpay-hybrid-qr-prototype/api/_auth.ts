@@ -5,6 +5,10 @@ const DEFAULT_PASSWORD = "BiMPay-demo-123";
 const SESSION_COOKIE = "bimpay_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
+/**
+ * Production fails closed unless both secrets exist. Development keeps a
+ * deterministic fallback so the local prototype remains easy to start.
+ */
 export function authenticationIsConfigured(): boolean {
   return (
     process.env.NODE_ENV !== "production" ||
@@ -23,12 +27,14 @@ function getSessionSecret(): string {
   );
 }
 
+/** Derives a stable opaque token without placing the password in the cookie. */
 function expectedSessionToken(): string {
   return createHmac("sha256", getSessionSecret())
     .update(`authenticated:${getPassword()}`)
     .digest("hex");
 }
 
+/** Avoids timing differences when comparing passwords and session tokens. */
 function constantTimeEqual(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
@@ -53,10 +59,12 @@ function readCookie(req: VercelRequest, name: string): string {
   return "";
 }
 
+/** Validates the submitted private-site password. */
 export function passwordIsValid(password: string): boolean {
   return authenticationIsConfigured() && constantTimeEqual(password, getPassword());
 }
 
+/** Checks the HTTP-only site cookie independently of Supabase collaboration auth. */
 export function requestIsAuthenticated(req: VercelRequest): boolean {
   if (!authenticationIsConfigured()) {
     return false;
@@ -68,6 +76,7 @@ export function requestIsAuthenticated(req: VercelRequest): boolean {
   );
 }
 
+/** Guards an API handler and writes a standard 401 response on failure. */
 export function requireAuthentication(
   req: VercelRequest,
   res: VercelResponse
@@ -80,6 +89,7 @@ export function requireAuthentication(
   return false;
 }
 
+/** Issues the eight-hour private-site session cookie. */
 export function setSessionCookie(res: VercelResponse): void {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
 
@@ -89,6 +99,7 @@ export function setSessionCookie(res: VercelResponse): void {
   );
 }
 
+/** Expires the private-site session cookie immediately. */
 export function clearSessionCookie(res: VercelResponse): void {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
 

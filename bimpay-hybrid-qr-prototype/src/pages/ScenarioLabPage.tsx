@@ -431,6 +431,10 @@ export default function ScenarioLabPage() {
     setMessage("");
   }
 
+  /**
+   * Generates an embedded payload link and opportunistically upgrades it to a
+   * Redis-backed shared lifecycle session when the API is available.
+   */
   async function generateRequest(): Promise<void> {
     if (mode === "interpersonal" && payer.id === recipient.id) {
       setMessage("Choose two different account profiles for this transfer.");
@@ -467,7 +471,7 @@ export default function ScenarioLabPage() {
         setSharedSession(record);
       }
     } catch {
-      // The embedded payload link remains usable when the token service is offline.
+      // Graceful degradation: the payload itself remains resolvable without Redis.
     }
 
     const qrDataUrl = await QRCode.toDataURL(link, {
@@ -484,6 +488,7 @@ export default function ScenarioLabPage() {
     setMessage("Payment request created. Mark it scanned to continue the lifecycle.");
   }
 
+  /** Merges a polled payment-link record into the local lifecycle and history. */
   function syncSharedSession(record: PaymentLinkRecord): void {
     setSharedSession(record);
     setRequestState(record.status);
@@ -509,6 +514,12 @@ export default function ScenarioLabPage() {
     }
   }
 
+  /**
+   * Advances either the shared token session or the local-only simulation.
+   *
+   * Terminal states are retained in Scenario history but never touch Wallet Lab
+   * balances or financial ledger rows.
+   */
   async function transitionRequest(nextState: RequestState): Promise<void> {
     if (
       nextState === "authorized" &&

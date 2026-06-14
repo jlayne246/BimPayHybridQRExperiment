@@ -14,6 +14,18 @@
     {
       "source": "/wallet",
       "destination": "/index.html"
+    },
+    {
+      "source": "/scenarios",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/experimental/generate",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/experimental/scan",
+      "destination": "/index.html"
     }
   ]
 }

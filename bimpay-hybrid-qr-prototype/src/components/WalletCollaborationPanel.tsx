@@ -20,6 +20,11 @@ import type { SharedWorkspaceMember } from "../lib/walletCloud";
 import type { SharedWorkspaceSession } from "../lib/walletCloud";
 import type { WalletLabState } from "../types/wallet";
 
+/**
+ * Manages Supabase identity, workspace membership, and explicit wallet
+ * snapshot load/publish actions. Atomic transactions are dispatched by the
+ * Wallet Lab itself rather than through this configuration panel.
+ */
 export function WalletCollaborationPanel({
   state,
   onLoad,
@@ -186,6 +191,7 @@ export function WalletCollaborationPanel({
     setBusy(true);
     setMessage("");
     try {
+      // Ignore the revision notification caused by this browser's own publish.
       suppressNextRealtime.current = true;
       const revision = await publishSharedWalletState(
         workspaceId,

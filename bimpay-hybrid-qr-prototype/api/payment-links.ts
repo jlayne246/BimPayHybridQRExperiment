@@ -46,6 +46,10 @@ const SESSION_STATUSES = new Set<PaymentSessionStatus>([
   "refunded",
 ]);
 
+/**
+ * Rejects arbitrary production-looking payloads before they enter Redis.
+ * This is a safety marker check, not a complete EMV validation routine.
+ */
 function isSandboxPayload(payload: string): boolean {
   return (
     payload.includes("bb.org.cb.mpqr") &&
@@ -125,6 +129,7 @@ async function createPaymentLink(req: VercelRequest, res: VercelResponse) {
 
   const redis = await getRedisClient();
 
+  // Redis owns expiry so stale sessions disappear without a cleanup worker.
   await redis.setEx(
     `payment-link:${token}`,
     TTL_SECONDS,
@@ -206,6 +211,7 @@ async function updatePaymentLink(req: VercelRequest, res: VercelResponse) {
         : record.authorizedAmount,
     events: [...(record.events ?? []), { status, actor: actor.slice(0, 60), timestamp: now }],
   };
+  // Preserve the original remaining lifetime instead of extending every update.
   const ttl = Number(await redis.ttl(key));
   await redis.setEx(key, ttl > 0 ? ttl : TTL_SECONDS, JSON.stringify(updated));
   return res.status(200).json(updated);

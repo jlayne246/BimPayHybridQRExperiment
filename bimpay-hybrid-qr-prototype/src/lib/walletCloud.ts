@@ -7,6 +7,7 @@ import type {
   WalletLabState,
 } from "../types/wallet";
 
+/** Workspace metadata visible to the authenticated collaborator. */
 export interface SharedWorkspace {
   id: string;
   name: string;
@@ -15,17 +16,20 @@ export interface SharedWorkspace {
   revision: number;
 }
 
+/** Wallet state plus the revision used for conflict-aware publishing. */
 export interface SharedWalletSnapshot {
   state: WalletLabState;
   revision: number;
 }
 
+/** Active browser relationship to a loaded shared workspace. */
 export interface SharedWorkspaceSession {
   workspaceId: string;
   role: SharedWorkspace["role"];
   revision: number;
 }
 
+/** Normalized result returned by atomic financial RPCs. */
 export interface AtomicWalletResult {
   revision: number;
   amount: number;
@@ -54,6 +58,7 @@ function requireSupabase() {
   return supabase;
 }
 
+/** Returns the current Supabase user, or null when no collaboration session exists. */
 export async function getCloudUser(): Promise<User | null> {
   const client = requireSupabase();
   const { data, error } = await client.auth.getUser();
@@ -61,6 +66,7 @@ export async function getCloudUser(): Promise<User | null> {
   return data.user;
 }
 
+/** Sends a magic link only to a user already invited in Supabase Auth. */
 export async function sendMagicLink(email: string): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.auth.signInWithOtp({
@@ -78,6 +84,7 @@ export async function signOutCloud(): Promise<void> {
   if (error) throw error;
 }
 
+/** Lists every workspace membership available to the current Supabase user. */
 export async function listSharedWorkspaces(): Promise<SharedWorkspace[]> {
   const client = requireSupabase();
   const { data, error } = await client
@@ -152,6 +159,12 @@ export async function removeSharedWorkspaceMember(
   if (error) throw error;
 }
 
+/**
+ * Loads profiles, linked sources, and ledger rows concurrently.
+ *
+ * Source rows are grouped back into each profile and their sum becomes the
+ * client-side aggregate bank balance.
+ */
 export async function loadSharedWalletState(
   workspaceId: string
 ): Promise<SharedWalletSnapshot> {
@@ -179,6 +192,7 @@ export async function loadSharedWalletState(
   if (fundingResult.error) throw fundingResult.error;
   if (ledgerResult.error) throw ledgerResult.error;
 
+  // Reconstruct the nested client model from normalized relational rows.
   const sourcesByProfile = new Map<string, WalletFundingSource[]>();
   for (const row of fundingResult.data ?? []) {
     const sources = sourcesByProfile.get(row.profile_id) ?? [];
@@ -229,6 +243,7 @@ export async function loadSharedWalletState(
   };
 }
 
+/** Publishes configuration/state changes if the expected revision is still current. */
 export async function publishSharedWalletState(
   workspaceId: string,
   state: WalletLabState,
@@ -244,6 +259,7 @@ export async function publishSharedWalletState(
   return Number(data);
 }
 
+/** Converts loosely typed JSON returned by Supabase RPCs into a stable client contract. */
 function normalizeAtomicResult(data: Record<string, unknown>): AtomicWalletResult {
   return {
     revision: Number(data.revision),
@@ -263,6 +279,7 @@ function normalizeAtomicResult(data: Record<string, unknown>): AtomicWalletResul
   };
 }
 
+/** Atomically moves funds from one linked account into stored wallet value. */
 export async function reloadSharedWallet(input: {
   workspaceId: string;
   profileId: string;
@@ -283,6 +300,7 @@ export async function reloadSharedWallet(input: {
   return normalizeAtomicResult(data as Record<string, unknown>);
 }
 
+/** Atomically debits a wallet profile for a merchant payment. */
 export async function paySharedMerchant(input: {
   workspaceId: string;
   payerProfileId: string;
@@ -307,6 +325,7 @@ export async function paySharedMerchant(input: {
   return normalizeAtomicResult(data as Record<string, unknown>);
 }
 
+/** Atomically debits one profile and credits another profile. */
 export async function transferSharedWallets(input: {
   workspaceId: string;
   payerProfileId: string;
@@ -331,6 +350,7 @@ export async function transferSharedWallets(input: {
   return normalizeAtomicResult(data as Record<string, unknown>);
 }
 
+/** Applies an explicit, audited sandbox correction to one balance. */
 export async function adjustSharedBalance(input: {
   workspaceId: string;
   profileId: string;
@@ -355,6 +375,7 @@ export async function adjustSharedBalance(input: {
   return normalizeAtomicResult(data as Record<string, unknown>);
 }
 
+/** Subscribes to workspace revision changes rather than every child table. */
 export function subscribeToSharedWorkspace(
   workspaceId: string,
   onChange: (revision: number) => void

@@ -1,3 +1,4 @@
+/** Input needed to build the constrained, test-only Scenario Lab payload. */
 export interface SandboxPaymentRequest {
   recipientName: string;
   city: string;
@@ -13,6 +14,7 @@ export interface SandboxPaymentRequest {
   initiationMethod?: "11" | "12";
 }
 
+/** One human-readable validation result rendered before QR generation. */
 export interface SandboxValidationCheck {
   id: string;
   label: string;
@@ -28,10 +30,12 @@ function tlv(tag: string, value: string): string {
   return `${tag}${normalized.length.toString().padStart(2, "0")}${normalized}`;
 }
 
+/** Encodes an optional field without emitting an empty TLV record. */
 function optionalTlv(tag: string, value?: string): string {
   return value?.trim() ? tlv(tag, value) : "";
 }
 
+/** Implements the CRC variant used by the EMV-style payload footer. */
 function crc16CcittFalse(input: string): string {
   let crc = 0xffff;
 
@@ -49,6 +53,12 @@ function crc16CcittFalse(input: string): string {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
+/**
+ * Builds a deterministic test payload from a validated Scenario request.
+ *
+ * The branch/store code is carried in additional-data tag 62.03 so merchants
+ * sharing a settlement account can still reconcile by location.
+ */
 export function buildSandboxEmvPayload(request: SandboxPaymentRequest): string {
   const merchantAccount = [
     tlv("00", BIMPAY_GUI),
@@ -92,10 +102,12 @@ export function buildSandboxEmvPayload(request: SandboxPaymentRequest): string {
   return `${payloadWithoutCrc}${crc16CcittFalse(payloadWithoutCrc)}`;
 }
 
+/** Accepts positive decimal amounts with exactly two fractional digits. */
 export function isValidSandboxAmount(value: string): boolean {
   return /^\d+(\.\d{2})$/.test(value) && Number(value) > 0;
 }
 
+/** Returns all request checks so the UI can display errors and warnings together. */
 export function validateSandboxPaymentRequest(
   request: SandboxPaymentRequest
 ): SandboxValidationCheck[] {
@@ -187,6 +199,7 @@ export function validateSandboxPaymentRequest(
   ];
 }
 
+/** Verifies the final tag 63 value without interpreting the payload as legitimate. */
 export function validateSandboxPayloadCrc(payload: string): boolean {
   const crcIndex = payload.lastIndexOf("6304");
   if (crcIndex < 0 || payload.length < crcIndex + 8) return false;

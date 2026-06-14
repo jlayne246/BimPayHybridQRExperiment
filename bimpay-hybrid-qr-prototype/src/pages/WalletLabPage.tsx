@@ -129,6 +129,10 @@ function totalFundingSources(sources: WalletFundingSource[]): number {
   return roundMoney(sources.reduce((total, source) => total + source.balance, 0));
 }
 
+/**
+ * Preserves an existing aggregate bank balance when a built-in profile gains a
+ * richer multi-account template in a later application version.
+ */
 function scaleFundingSources(
   template: WalletFundingSource[],
   totalBalance: number
@@ -153,6 +157,7 @@ function scaleFundingSources(
   });
 }
 
+/** Picks the enabled default source, falling back to the lowest priority number. */
 function defaultFundingSource(wallet: SimulatedWallet): WalletFundingSource | undefined {
   return (
     wallet.fundingSources.find((source) => source.enabled && source.isDefault) ??
@@ -244,6 +249,12 @@ function loadState(): WalletLabState {
   }
 }
 
+/**
+ * Upgrades persisted state without resetting balances or custom profiles.
+ *
+ * Shared snapshots can opt out of adding newly introduced catalog profiles so
+ * a deliberate deletion by collaborators is respected.
+ */
 function normalizeState(
   state: WalletLabState,
   addMissingCatalogProfiles = true
@@ -251,6 +262,7 @@ function normalizeState(
   const baseline = createInitialState();
   const normalizedWallets = state.wallets.map((wallet, index) => {
     const baselineWallet = baseline.wallets.find((candidate) => candidate.id === wallet.id);
+    // Earlier versions represented every profile with one synthetic primary source.
     const hasLegacyPrimaryOnly =
       Array.isArray(wallet.fundingSources) &&
       wallet.fundingSources.length === 1 &&
@@ -726,6 +738,12 @@ export default function WalletLabPage() {
     };
   }
 
+  /**
+   * Calculates a local debit and its ledger entries.
+   *
+   * Hybrid fallback is intentionally limited to one selected account. Available
+   * funds in another source never authorize an implicit cross-account split.
+   */
   function fundPayment(
     wallet: SimulatedWallet,
     fundingSource: WalletFundingSource | undefined,
@@ -805,6 +823,7 @@ export default function WalletLabPage() {
         )
       );
     }
+    // Apply the bank-funded portion to the selected source only.
     const fundingSources =
       bankPortion > 0
         ? wallet.fundingSources.map((source) =>
@@ -830,6 +849,7 @@ export default function WalletLabPage() {
     };
   }
 
+  /** Reloads committed server state after an atomic operation. */
   async function refreshSharedState(
     session: SharedWorkspaceSession
   ): Promise<WalletLabState> {
@@ -840,6 +860,12 @@ export default function WalletLabPage() {
     return normalizedState;
   }
 
+  /**
+   * Dispatches a financial operation to a source-aware atomic RPC.
+   *
+   * The fingerprint retains the same idempotency key for a user retry of an
+   * unchanged form, but creates a new key when transaction inputs change.
+   */
   async function submitSharedTransaction(transactionAmount: number): Promise<void> {
     if (!sharedSession) return;
     if (sharedSession.role === "viewer") {

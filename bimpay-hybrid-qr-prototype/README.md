@@ -1,190 +1,78 @@
 # BiMPay Hybrid QR Prototype
 
-## Workspaces
+An independent, unofficial, test-only sandbox for exploring EMV-style QR payloads, fictional
+payment scenarios, and FinTech wallet funding behavior.
 
-- **Experimental QR Lab** preserves the field-level generator and scanner/resolver.
-- **Profile Scenario Lab** uses a shared catalog of fictional people, charities, churches, and
-  businesses to generate situational payment requests and model payer confirmation.
-- **Wallet Funding Lab** uses those same profiles to compare prepaid, bank-linked, hybrid, and
-  bank-direct funding. The models can make merchant payments and transfer funds to each other while
-  wallet and linked-bank balances are tracked separately.
+> This prototype does not connect to BiMPay, banks, payment processors, or real payment rails.
+> Never enter real account identifiers, credentials, customer data, or transaction information.
 
-Scenario transactions are browser-session simulations only. They do not change balances, contact
-external financial institutions, or move funds.
+## Features
 
-The scenario lab also supports custom merchant checkouts and browser-local fictional person
-profiles. Custom people persist in local storage until removed; transaction history remains limited
-to the current browser session.
+### Experimental QR Lab
 
-Merchant scenarios support fixed amounts and payer-entered variable amounts. Before generation, the
-scenario lab validates route pairings, synthetic account references, field lengths, merchant
-category codes, amount behavior, and test-only metadata. Generated requests can move through
-created, scanned, authorized, declined, expired, cancelled, and refunded sandbox states. Authorized
-and refunded simulations include a local receipt view.
+- Build merchant-presented payloads field by field.
+- Generate and inspect QR payloads, TLV fields, and CRC results.
+- Scan with a camera or uploaded image.
+- Resolve embedded payload links and short-lived shared payment sessions.
 
-Custom merchant profiles can be saved, edited, selected, and removed in local browser storage.
+### Profile Scenario Lab
 
-Wallet and bank balances are browser-local simulations. Prepaid payments use stored value,
-bank-linked payments debit the simulated linked bank balance, and hybrid payments use stored value
-before falling back to the linked bank balance. Bank-direct profiles have no stored wallet value,
-which supports wallet-to-bank and bank-to-wallet scenarios. Transfers can move between any two
-funding models.
+- Model transfers and merchant checkout with fictional people, charities, churches, and businesses.
+- Use fixed or payer-entered amounts.
+- Exercise created, scanned, authorized, declined, expired, cancelled, and refunded states.
+- Explore multi-branch merchants with centralized or branch-level settlement.
+- Save custom people and merchants.
+- Share custom profiles and scenario history with invited collaborators.
 
-The wallet lab also supports browser-local custom wallet profiles. Custom profiles can be created,
-edited, cloned, and removed, and can participate in the same merchant payments and cross-model
-transfers as the built-in examples.
+### Wallet Funding Lab
 
-Built-in examples include fictional individual, charity, church, and business profiles. The same
-catalog is available in both labs. Some organizations and businesses are deliberately bank-direct
-so they can receive a wallet transfer or donation without owning a stored-value wallet.
+- Compare prepaid, bank-linked, hybrid, and bank-direct profiles.
+- Reload stored value, pay merchants, transfer between profiles, and adjust sandbox balances.
+- Use multiple linked accounts with an explicit account selection per transaction.
+- Maintain separate wallet, linked-account, and ledger records.
+- Create and manage custom individual, business, charity, and church profiles.
+- Run shared transactions through atomic Supabase database functions.
 
-Multi-branch merchant examples cover both common settlement patterns. Test Harbor Pharmacy branches
-share one centralized settlement account and carry distinct store labels for reconciliation. Test
-Island Home branches use separate bank-direct settlement accounts and therefore maintain independent
-simulated branch balances.
+## Documentation
 
-Hybrid and bank-linked wallets can also hold multiple named linked accounts. Each transaction uses
-one explicitly selected account for reloads or bank fallback; the simulator does not silently split
-one payment across several bank accounts. Leah Test, Test Bridgetown Community Church, and Test
-Seabreeze Cafe include checking/operating and savings/reserve examples.
+- [User guide](docs/USER_GUIDE.md)
+- [Collaboration and permissions](docs/COLLABORATION.md)
+- [Architecture and data model](docs/ARCHITECTURE.md)
+- [Local setup, configuration, and deployment](docs/OPERATIONS.md)
+- [Supabase migration history](supabase/migrations/README.md)
 
-## Private collaboration with Supabase
+## Quick Start
 
-The wallet lab can optionally publish its complete wallet/profile/ledger state to an invite-only
-Supabase workspace. Without Supabase environment variables, it remains fully functional in local
-browser storage.
+Prerequisites:
 
-1. Create a private Supabase project.
-2. Run the SQL files in `supabase/migrations` in filename order in the Supabase SQL Editor.
-3. In Authentication settings, disable public user sign-ups.
-4. Add the deployed site URL and local development URL to the allowed redirect URLs.
-5. Invite each collaborator from the Supabase Authentication dashboard.
-6. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and
-   `VITE_SUPABASE_PUBLISHABLE_KEY`.
-7. Add those same two variables to the Vercel project and redeploy.
+- Node.js 20 or newer
+- npm
 
-The Supabase service-role key must never be added to a `VITE_` variable or browser code. Workspace
-owners can grant invited users `editor` or `viewer` access from the Wallet Funding Lab. Publishing
-is explicit rather than automatic: collaborators load shared state, work locally, and publish when
-ready. Shared workspaces use revision checks, so a stale browser cannot overwrite balances that
-another user published first. Realtime notifications indicate when another collaborator has
-published a newer state.
-
-Ordinary shared wallet operations do not publish browser-calculated snapshots. Reloads, merchant
-payments, wallet transfers, and explicit sandbox balance adjustments execute through atomic
-Supabase database functions. The functions lock affected profiles, recheck funds, update balances,
-append ledger entries, and increment the workspace revision in one transaction. Client-generated
-idempotency keys make safe retries return the original result instead of applying a payment twice.
-Full-state publishing remains available for workspace configuration changes such as profile setup
-and sandbox resets.
-
-The Profile Scenario Lab uses the same invited workspace membership. Collaborators can explicitly
-load and publish custom people, custom merchants, and simulated scenario history. Those scenario
-records are stored separately from wallet balances and wallet ledger entries, so moving a QR request
-through authorized or refunded states does not itself move simulated wallet funds.
-
-The existing Redis integration remains limited to short-lived payment-link sessions. Supabase
-stores durable collaborative wallet workspaces.
-
-Merchant category selectors share an expanded ISO 18245 MCC catalog. EMV merchant-presented QR
-stores the selected four-digit MCC in tag 52; the category definitions themselves are maintained by
-ISO rather than EMVCo.
-
-## Shared transaction sessions
-
-When the payment-link API is available, scenario QR codes create a shared 15-minute transaction
-session. A second signed-in browser or device can scan the QR in the Scanner section or open the
-payment link, then mark it scanned, authorize or decline it, cancel or expire it, and simulate a
-refund. The creator polls the shared token and reflects those updates, including the event history
-and authorized payer-entered amount.
-
-Embedded-payload QR links still resolve when the token API is unavailable, but their lifecycle is
-local to that browser and cannot synchronize across sessions.
-
-Generated sandbox payloads retain the observed BiMPay-oriented values `bb.org.cb.mpqr`, `QRBB`,
-and the historical test routes `TESTROC1`/`333331` and `TESTROC2`/`333332`. Profile names,
-account references, and transaction state remain synthetic.
-
-## Sign in
-
-The site and payment-link APIs are protected by a password and an HTTP-only
-session cookie.
-
-Please contact the developer for the default password.
-
-Sessions last for eight hours. Run both `npm run api` and `npm run dev` for
-local development.
-
-## Vite template notes
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```powershell
+npm install
+Copy-Item .env.example .env.local
+npm run api
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+In a second terminal:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```powershell
+npm run dev
 ```
+
+Open `http://127.0.0.1:5173`. Local development falls back to the test password defined in the
+server source when `SITE_PASSWORD` is omitted. Set your own values in `.env.local` for normal use.
+
+See [OPERATIONS.md](docs/OPERATIONS.md) for Supabase, Redis, Vercel, production authentication,
+migrations, and verification.
+
+## Safety Boundaries
+
+- All built-in names, routes, account references, balances, and transactions are synthetic.
+- Scenario lifecycle states do not change wallet balances.
+- Wallet transactions affect only simulated balances.
+- Payment-link sessions expire after 15 minutes.
+- The observed identifiers `bb.org.cb.mpqr`, `QRBB`, `TESTROC1`, and `TESTROC2` are retained only
+  for technical experimentation.
+- This project is not affiliated with or endorsed by BiMPay, the Central Bank of Barbados, EMVCo,
+  any financial institution, or any payment provider.

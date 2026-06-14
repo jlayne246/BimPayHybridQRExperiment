@@ -1,3 +1,10 @@
+/*
+ * Durable Scenario Lab collaboration.
+ *
+ * Scenario profiles and lifecycle history share workspace membership and
+ * revision conflict protection with the Wallet Lab, but remain financially
+ * isolated from wallet balances and ledger entries.
+ */
 create table if not exists public.scenario_profiles (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   profile_id text not null,
@@ -136,6 +143,7 @@ begin
     raise exception 'Workspace edit permission required';
   end if;
 
+  -- The shared revision prevents stale Scenario and Wallet pages alike.
   select revision into current_revision
   from public.workspaces
   where id = target_workspace_id

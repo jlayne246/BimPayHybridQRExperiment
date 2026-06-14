@@ -1,3 +1,10 @@
+/*
+ * Normalized linked funding accounts.
+ *
+ * wallet_profiles.bank_balance remains a compatibility aggregate, while rows
+ * in wallet_funding_sources are authoritative for source-aware transactions.
+ * A transaction may debit only one selected source.
+ */
 create table if not exists public.wallet_funding_sources (
   workspace_id uuid not null,
   profile_id text not null,
@@ -263,6 +270,7 @@ begin
       and source_id = source_record.source_id;
   end if;
 
+  -- Keep the legacy aggregate synchronized after the source-level debit.
   update public.wallet_profiles profile
   set bank_balance = coalesce((
     select sum(source.balance)

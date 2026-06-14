@@ -1,3 +1,10 @@
+/*
+ * Base collaboration schema.
+ *
+ * Workspace membership is the authorization boundary. RLS permits member
+ * reads, while later migrations revoke direct financial writes and route them
+ * through atomic functions.
+ */
 create extension if not exists pgcrypto;
 
 create table if not exists public.workspaces (
@@ -79,6 +86,7 @@ as $$
   );
 $$;
 
+-- Centralize role checks so RLS policies and security-definer RPCs agree.
 create or replace function public.can_edit_workspace(target_workspace_id uuid)
 returns boolean
 language sql
