@@ -21,6 +21,14 @@ const workspaces = [
     links: [{ label: "Open scenarios", to: "/scenarios" }],
     tone: "from-blue-700 to-indigo-600",
   },
+  {
+    eyebrow: "Funding-model testing",
+    title: "Wallet Funding Lab",
+    description:
+      "Compare prepaid, bank-linked, and hybrid wallets. Test direct bank debits, stored value, fallback funding, and transfers between wallet models.",
+    links: [{ label: "Open wallet", to: "/wallet" }],
+    tone: "from-emerald-700 to-teal-600",
+  },
 ];
 
 export default function WorkspaceHomePage() {
@@ -45,7 +53,7 @@ export default function WorkspaceHomePage() {
         <ExperimentalWarning />
       </div>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-2">
+      <section className="mt-6 grid gap-6 lg:grid-cols-3">
         {workspaces.map((workspace) => (
           <article
             className={`flex min-h-96 flex-col rounded-[2rem] bg-gradient-to-br ${workspace.tone} p-7 text-white shadow-xl sm:p-9`}

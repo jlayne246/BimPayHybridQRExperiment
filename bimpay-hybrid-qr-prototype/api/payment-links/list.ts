@@ -22,7 +22,7 @@ export default async function handler(
 
       results.push({
         key,
-        value: value ? JSON.parse(value) : null,
+        value: value ? JSON.parse(String(value)) : null,
       });
     }
 

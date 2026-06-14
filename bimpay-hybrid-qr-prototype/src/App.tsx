@@ -3,6 +3,7 @@ import ResolverPage from "./pages/ResolverPage";
 import CreatePaymentQrPage from "./pages/CreatePaymentQrPage";
 import ScenarioLabPage from "./pages/ScenarioLabPage";
 import WorkspaceHomePage from "./pages/WorkspaceHomePage";
+import WalletLabPage from "./pages/WalletLabPage";
 import { BuildBadge } from "./components/BuildBadge";
 import { useAuth } from "./auth/useAuth";
 
@@ -36,6 +37,9 @@ export default function App() {
               <NavLink className={navClass} to="/scenarios">
                 Profile Scenarios
               </NavLink>
+              <NavLink className={navClass} to="/wallet">
+                Wallet Lab
+              </NavLink>
             </div>
             <button
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
@@ -53,6 +57,7 @@ export default function App() {
           <Route path="/experimental/scan" element={<ResolverPage />} />
           <Route path="/experimental/generate" element={<CreatePaymentQrPage />} />
           <Route path="/scenarios" element={<ScenarioLabPage />} />
+          <Route path="/wallet" element={<WalletLabPage />} />
           <Route path="/create" element={<CreatePaymentQrPage />} />
           <Route path="*" element={<WorkspaceHomePage />} />
         </Routes>

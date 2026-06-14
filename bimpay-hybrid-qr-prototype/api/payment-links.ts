@@ -155,7 +155,7 @@ async function getPaymentLink(req: VercelRequest, res: VercelResponse) {
   }
 
   const record = normalizePaymentLinkRecord(
-    JSON.parse(raw) as Partial<PaymentLinkRecord>
+    JSON.parse(redisText(raw)) as Partial<PaymentLinkRecord>
   );
 
   if (!record.isActive) {
@@ -183,7 +183,7 @@ async function updatePaymentLink(req: VercelRequest, res: VercelResponse) {
   if (!raw) return res.status(404).json({ error: "Payment session not found or expired." });
 
   const record = normalizePaymentLinkRecord(
-    JSON.parse(raw) as Partial<PaymentLinkRecord>
+    JSON.parse(redisText(raw)) as Partial<PaymentLinkRecord>
   );
   if (
     status === "authorized" &&
@@ -206,9 +206,13 @@ async function updatePaymentLink(req: VercelRequest, res: VercelResponse) {
         : record.authorizedAmount,
     events: [...(record.events ?? []), { status, actor: actor.slice(0, 60), timestamp: now }],
   };
-  const ttl = await redis.ttl(key);
+  const ttl = Number(await redis.ttl(key));
   await redis.setEx(key, ttl > 0 ? ttl : TTL_SECONDS, JSON.stringify(updated));
   return res.status(200).json(updated);
+}
+
+function redisText(value: string | Buffer): string {
+  return typeof value === "string" ? value : value.toString("utf8");
 }
 
 function normalizePaymentLinkRecord(

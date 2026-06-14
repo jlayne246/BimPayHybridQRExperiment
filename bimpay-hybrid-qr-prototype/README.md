@@ -5,6 +5,9 @@
 - **Experimental QR Lab** preserves the field-level generator and scanner/resolver.
 - **Profile Scenario Lab** uses fictional people and merchants to generate situational payment
   requests and model payer confirmation.
+- **Wallet Funding Lab** compares prepaid, bank-linked, and hybrid wallets. The models can make
+  merchant payments and transfer funds to each other while wallet and linked-bank balances are
+  tracked separately.
 
 Scenario transactions are browser-session simulations only. They do not change balances, contact
 external financial institutions, or move funds.
@@ -20,6 +23,37 @@ created, scanned, authorized, declined, expired, cancelled, and refunded sandbox
 and refunded simulations include a local receipt view.
 
 Custom merchant profiles can be saved, edited, selected, and removed in local browser storage.
+
+Wallet and bank balances are browser-local simulations. Prepaid payments use stored value,
+bank-linked payments debit the simulated linked bank balance, and hybrid payments use stored value
+before falling back to the linked bank balance. Transfers can move between any two funding models.
+
+The wallet lab also supports browser-local custom wallet profiles. Custom profiles can be created,
+edited, cloned, and removed, and can participate in the same merchant payments and cross-model
+transfers as the built-in examples.
+
+## Private collaboration with Supabase
+
+The wallet lab can optionally publish its complete wallet/profile/ledger state to an invite-only
+Supabase workspace. Without Supabase environment variables, it remains fully functional in local
+browser storage.
+
+1. Create a private Supabase project.
+2. Run `supabase/migrations/202606140001_wallet_collaboration.sql` in the Supabase SQL Editor.
+3. In Authentication settings, disable public user sign-ups.
+4. Add the deployed site URL and local development URL to the allowed redirect URLs.
+5. Invite each collaborator from the Supabase Authentication dashboard.
+6. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and
+   `VITE_SUPABASE_PUBLISHABLE_KEY`.
+7. Add those same two variables to the Vercel project and redeploy.
+
+The Supabase service-role key must never be added to a `VITE_` variable or browser code. Workspace
+owners can grant invited users `editor` or `viewer` access from the Wallet Funding Lab. Publishing
+is explicit rather than automatic: collaborators load shared state, work locally, and publish when
+ready. Realtime notifications indicate when another collaborator has published a newer state.
+
+The existing Redis integration remains limited to short-lived payment-link sessions. Supabase
+stores durable collaborative wallet workspaces.
 
 Merchant category selectors share an expanded ISO 18245 MCC catalog. EMV merchant-presented QR
 stores the selected four-digit MCC in tag 52; the category definitions themselves are maintained by

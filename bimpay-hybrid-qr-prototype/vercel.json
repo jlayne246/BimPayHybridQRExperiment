@@ -10,6 +10,10 @@
     {
       "source": "/create",
       "destination": "/index.html"
+    },
+    {
+      "source": "/wallet",
+      "destination": "/index.html"
     }
   ]
 }
