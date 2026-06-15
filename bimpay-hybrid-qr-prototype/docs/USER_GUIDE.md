@@ -129,6 +129,19 @@ Without an active shared workspace, transactions update browser-local state:
 - **Request payment:** creates an RTP QR and waits for the selected payer to approve it.
 - **Adjust balance:** records an explicit sandbox-only correction.
 
+### Wallet Scanner
+
+Open **Wallet QR scanner** above the Wallet Lab transaction controls. It accepts a device camera,
+an uploaded QR image, or a pasted payment link/raw EMV payload.
+
+Recognized wallet QRs select **Send to wallet**, choose the matching recipient, and populate a
+fixed amount when present. Static variable-amount QRs leave the amount editable for the payer.
+
+Use **Check camera access** when the camera does not open. The diagnostic reports secure context,
+camera API availability, browser permission, device count, Permissions Policy, and whether the app
+is running inside an embedded browser. Embedded browsers may not pass a physical camera through,
+even when the same deployed URL works directly in Safari, Chrome, or Edge.
+
 ### Static Wallet QR Codes
 
 Open the **Static receive QR** drawer directly below the active wallet's balance card. You can also

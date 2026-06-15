@@ -112,6 +112,9 @@ through the linked Git repository.
 `/scenarios`, `/experimental/generate`, and `/experimental/scan`. Direct navigation to application
 routes must resolve to `index.html`; keep this list aligned when adding routes.
 
+Vercel also sends `Permissions-Policy: camera=(self)`. This permits camera access for the deployed
+site itself. An iframe or embedded browser must independently expose and allow camera access.
+
 After deployment, verify:
 
 ```powershell
@@ -155,3 +158,19 @@ Check `REDIS_URL`, Redis connectivity, the 15-minute expiry, and the private sit
 
 Choose another account explicitly or adjust/reload the selected account. The engine will not split
 the remainder across sources.
+
+### Camera reports no device or cannot open
+
+Camera access requires HTTPS or localhost, a browser/OS camera grant, an available video device,
+and a browser context that exposes that device. Use **Check camera access** in the Wallet Lab:
+
+- `Secure context: No` means the URL must use HTTPS or localhost.
+- `Camera API: Unavailable` means the browser or host does not expose `getUserMedia`.
+- `Permission: denied` requires changing site or operating-system permissions.
+- `Video devices: 0` may mean no camera is attached or an embedded/remote browser does not pass it
+  through. Some browsers also hide devices until permission is granted.
+- `Policy: Blocked` indicates a Permissions Policy or embedding-frame restriction.
+- `Browser context: Embedded` means the host frame must grant camera permission independently.
+
+The deployed Vercel site is HTTPS. QR image upload and pasted payloads remain available when camera
+hardware cannot be exposed.

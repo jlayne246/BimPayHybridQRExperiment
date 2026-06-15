@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { Link } from "react-router-dom";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { WalletCollaborationPanel } from "../components/WalletCollaborationPanel";
+import { WalletQrScanner } from "../components/WalletQrScanner";
 import { CATALOG_PROFILES, MERCHANTS, PEOPLE } from "../data/sampleProfiles";
 import {
   adjustSharedBalance,
@@ -11,7 +12,10 @@ import {
   reloadSharedWallet,
   transferSharedWallets,
 } from "../lib/walletCloud";
-import { buildSandboxEmvPayload } from "../lib/sandboxEmv";
+import {
+  buildSandboxEmvPayload,
+  validateSandboxPayloadCrc,
+} from "../lib/sandboxEmv";
 import type { SharedWorkspaceSession } from "../lib/walletCloud";
 import type {
   BalanceType,
@@ -34,6 +38,12 @@ interface WalletPaymentRequest {
   note: string;
   createdAt: string;
   status: "pending" | "paid";
+}
+
+interface ScannedWalletPayment {
+  accountReference: string;
+  amount: string;
+  reference: string;
 }
 
 interface WalletProfileFields {
@@ -344,6 +354,49 @@ function syntheticAccountReference(value: string): string {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
   return `9${hash.toString().padStart(14, "0").slice(-14)}`;
+}
+
+function readTlvValues(payload: string): Map<string, string> {
+  const values = new Map<string, string>();
+  let index = 0;
+
+  while (index + 4 <= payload.length) {
+    const tag = payload.slice(index, index + 2);
+    const length = Number(payload.slice(index + 2, index + 4));
+    if (!/^\d{2}$/.test(tag) || !Number.isInteger(length)) break;
+    const valueStart = index + 4;
+    const valueEnd = valueStart + length;
+    if (valueEnd > payload.length) break;
+    values.set(tag, payload.slice(valueStart, valueEnd));
+    index = valueEnd;
+  }
+
+  return values;
+}
+
+/** Extracts wallet routing and payment fields from a raw or link-wrapped EMV payload. */
+function parseScannedWalletPayment(value: string): ScannedWalletPayment | null {
+  let payload = value.trim();
+  try {
+    const url = new URL(payload);
+    payload =
+      url.searchParams.get("emv") ??
+      url.searchParams.get("payload") ??
+      url.searchParams.get("code") ??
+      "";
+  } catch {
+    // Raw EMV payloads are expected to fail URL parsing.
+  }
+
+  if (!payload || !validateSandboxPayloadCrc(payload)) return null;
+  const topLevel = readTlvValues(payload);
+  const merchantAccount = readTlvValues(topLevel.get("26") ?? "");
+  const additionalData = readTlvValues(topLevel.get("62") ?? "");
+  return {
+    accountReference: merchantAccount.get("03") ?? "",
+    amount: topLevel.get("54") ?? "",
+    reference: additionalData.get("05") ?? "Scanned wallet QR",
+  };
 }
 
 /** Resolves catalog routing or stable test routing for a custom wallet. */
@@ -750,6 +803,42 @@ export default function WalletLabPage() {
     setPaymentRequest(null);
     setMessage("");
     setNote("");
+  }
+
+  function applyScannedWalletPayment(value: string): string {
+    const payment = parseScannedWalletPayment(value);
+    if (!payment?.accountReference) {
+      const result =
+        "That QR is not a valid sandbox EMV payment payload. Try the full Scanner for inspection.";
+      setMessage(result);
+      return result;
+    }
+
+    const scannedRecipient = lab.wallets.find(
+      (wallet) => walletQrRouting(wallet).accountReference === payment.accountReference
+    );
+    if (!scannedRecipient) {
+      const result =
+        "The QR is valid, but its recipient is not a wallet profile in this lab.";
+      setMessage(result);
+      return result;
+    }
+    if (scannedRecipient.id === activeWallet.id) {
+      const result = `This QR belongs to the active wallet, ${activeWallet.ownerName}. Select another wallet as the payer, then scan it again.`;
+      setMessage(result);
+      return result;
+    }
+
+    setRecipientId(scannedRecipient.id);
+    setAction("transfer");
+    if (payment.amount !== "***" && /^\d+(\.\d{2})?$/.test(payment.amount)) {
+      setAmount(Number(payment.amount).toFixed(2));
+    }
+    setNote(payment.reference.slice(0, 60));
+    setPaymentRequest(null);
+    const result = `${scannedRecipient.ownerName} was selected as the recipient. Review the amount and funding account before sending.`;
+    setMessage(result);
+    return result;
   }
 
   function selectRtpPayer(walletId: string): void {
@@ -1956,6 +2045,8 @@ export default function WalletLabPage() {
         </div>
 
         <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <WalletQrScanner onScan={applyScannedWalletPayment} />
+
           <div className="flex flex-wrap gap-2">
             {!isBankOnlyModel(activeWallet.model) && (
               <ActionButton active={action === "reload"} onClick={() => switchAction("reload")}>

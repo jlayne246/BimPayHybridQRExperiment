@@ -342,14 +342,25 @@ function modeTone(mode: ExtractMode): BadgeTone {
   }
 }
 
-function getCameraByMode(devices: MediaDeviceInfo[], mode: CameraMode): MediaDeviceInfo | undefined {
-  return (
-    devices.find((device) =>
-      mode === "environment"
-        ? /back|rear|environment/i.test(device.label)
-        : /front|user|face/i.test(device.label)
-    ) ?? devices[0]
-  );
+function describeCameraError(error: unknown): string {
+  if (!(error instanceof DOMException)) {
+    return "Could not open the camera. Upload a QR image or paste the payment link instead.";
+  }
+
+  switch (error.name) {
+    case "NotAllowedError":
+      return "Camera permission was denied. Allow camera access in the browser, or upload a QR image.";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "No camera is exposed to this browser. Desktop sandboxes and remote sessions may not pass a camera through; upload a QR image instead.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "The camera is busy or unavailable to this browser.";
+    case "SecurityError":
+      return "Camera access requires HTTPS or localhost. Upload a QR image on this connection.";
+    default:
+      return `Could not open the camera (${error.name}). Upload a QR image instead.`;
+  }
 }
 
 interface StatCardProps {
@@ -649,7 +660,7 @@ export default function ResolverPage() {
 
   async function openCameraWithMode(mode: CameraMode): Promise<void> {
     try {
-      setScanMessage("Opening camera...");
+      setScanMessage("Requesting camera access...");
 
       scannerControlsRef.current?.stop();
       scannerControlsRef.current = null;
@@ -657,19 +668,25 @@ export default function ResolverPage() {
       if (!codeReaderRef.current) {
         codeReaderRef.current = new BrowserMultiFormatReader();
       }
-
-      const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-      const selectedDevice = getCameraByMode(videoInputDevices, mode);
-
-      if (!selectedDevice?.deviceId || !videoRef.current) {
-        setScanMessage("No camera device found.");
+      if (!navigator.mediaDevices?.getUserMedia || !videoRef.current) {
+        setScanMessage(
+          "This browser does not expose a camera API. Upload a QR image or paste the payment link instead."
+        );
         return;
       }
 
       setIsCameraOpen(true);
 
-      const controls = await codeReaderRef.current.decodeFromVideoDevice(
-        selectedDevice.deviceId,
+      // Keep the browser permission request directly in the user-triggered
+      // handler, then give the granted stream to ZXing for decoding.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: mode },
+        },
+      });
+      const controls = await codeReaderRef.current.decodeFromStream(
+        stream,
         videoRef.current,
         (result) => {
           if (!result) return;
@@ -684,7 +701,7 @@ export default function ResolverPage() {
       scannerControlsRef.current = controls;
     } catch (error) {
       console.error(error);
-      setScanMessage("Could not open camera.");
+      setScanMessage(describeCameraError(error));
       stopCamera();
     }
   }
