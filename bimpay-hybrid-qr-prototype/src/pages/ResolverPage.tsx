@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import jsQR from "jsqr";
+import { Link } from "react-router-dom";
 import {
   BrowserMultiFormatReader,
   type IScannerControls,
@@ -828,6 +829,12 @@ export default function ResolverPage() {
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
                 Resolve camera-readable payment links, tokenized links, embedded EMV links, and raw EMV/RTP QR payloads into one payment preview.
               </p>
+              <Link
+                className="mt-5 inline-flex rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-400"
+                to="/wallet"
+              >
+                Back to Wallet Lab
+              </Link>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/10 p-5 backdrop-blur">

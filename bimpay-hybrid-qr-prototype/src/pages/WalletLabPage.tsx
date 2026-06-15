@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
+import { Link } from "react-router-dom";
 import { ExperimentalWarning } from "../components/ExperimentalWarning";
 import { WalletCollaborationPanel } from "../components/WalletCollaborationPanel";
 import { CATALOG_PROFILES, MERCHANTS, PEOPLE } from "../data/sampleProfiles";
@@ -10,6 +11,7 @@ import {
   reloadSharedWallet,
   transferSharedWallets,
 } from "../lib/walletCloud";
+import { buildSandboxEmvPayload } from "../lib/sandboxEmv";
 import type { SharedWorkspaceSession } from "../lib/walletCloud";
 import type {
   BalanceType,
@@ -22,6 +24,7 @@ import type {
 } from "../types/wallet";
 
 type WalletAction = "reload" | "merchant" | "transfer" | "request" | "adjust";
+type StaticQrFormat = "link" | "emv";
 
 interface WalletPaymentRequest {
   id: string;
@@ -335,38 +338,75 @@ function makeReference(prefix: string): string {
   return `${prefix}-${Date.now().toString().slice(-8)}`;
 }
 
-/** Encodes a portable wallet identity without exposing linked-account details. */
-function buildWalletQrPayload(wallet: SimulatedWallet): string {
-  return JSON.stringify({
-    scheme: "BIMPAY-SANDBOX",
-    version: 1,
-    type: "wallet-identity",
-    walletId: wallet.walletIdentifier,
-    profileId: wallet.id,
-    ownerName: wallet.ownerName,
-    fundingModel: wallet.model,
-    testOnly: true,
+function syntheticAccountReference(value: string): string {
+  let hash = 0;
+  for (const character of value) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  return `9${hash.toString().padStart(14, "0").slice(-14)}`;
+}
+
+/** Resolves catalog routing or stable test routing for a custom wallet. */
+function walletQrRouting(wallet: SimulatedWallet) {
+  const profile = CATALOG_PROFILES.find((candidate) => candidate.id === wallet.id);
+  const usesRouteTwo = wallet.walletIdentifier.length % 2 === 0;
+  return {
+    accountReference:
+      profile?.accountReference ?? syntheticAccountReference(wallet.walletIdentifier),
+    financialInstitutionAlias:
+      profile?.financialInstitutionAlias ?? (usesRouteTwo ? "TESTROC2" : "TESTROC1"),
+    branchAlias: profile?.branchAlias ?? (usesRouteTwo ? "TESTROC2" : "TESTROC1"),
+    participantCode: profile?.participantCode ?? (usesRouteTwo ? "333332" : "333331"),
+    merchantCategoryCode:
+      profile?.kind === "merchant"
+        ? profile.merchantCategoryCode
+        : wallet.profileKind === "charity"
+          ? "8398"
+          : wallet.profileKind === "church"
+            ? "8661"
+            : "0000",
+    city: profile?.kind === "merchant" ? profile.location : "Bridgetown",
+  };
+}
+
+/** Builds the same variable-amount EMV-style payload used by the QR generator. */
+function buildWalletEmvPayload(wallet: SimulatedWallet): string {
+  const routing = walletQrRouting(wallet);
+  return buildSandboxEmvPayload({
+    recipientName: wallet.ownerName,
+    city: routing.city,
+    accountReference: routing.accountReference,
+    participantCode: routing.participantCode,
+    financialInstitutionAlias: routing.financialInstitutionAlias,
+    branchAlias: routing.branchAlias,
+    merchantCategoryCode: routing.merchantCategoryCode,
+    amount: "0.00",
+    amountMode: "variable",
+    initiationMethod: "11",
+    reference: `STATIC ${wallet.walletIdentifier}`.slice(0, 25),
+    storeLabel: wallet.walletIdentifier.slice(0, 25),
   });
 }
 
-/** Encodes the minimum information needed to demonstrate a request-to-pay scan. */
-function buildRtpQrPayload(
+/** Builds a fixed-amount EMV-style payload for the RTP QR. */
+function buildRtpEmvPayload(
   request: WalletPaymentRequest,
-  requester: SimulatedWallet,
-  payer: SimulatedWallet
+  requester: SimulatedWallet
 ): string {
-  return JSON.stringify({
-    scheme: "BIMPAY-SANDBOX",
-    version: 1,
-    type: "request-to-pay",
-    requestId: request.id,
-    requesterWalletId: requester.walletIdentifier,
-    requestedPayerWalletId: payer.walletIdentifier,
+  const routing = walletQrRouting(requester);
+  return buildSandboxEmvPayload({
+    recipientName: requester.ownerName,
+    city: routing.city,
+    accountReference: routing.accountReference,
+    participantCode: routing.participantCode,
+    financialInstitutionAlias: routing.financialInstitutionAlias,
+    branchAlias: routing.branchAlias,
+    merchantCategoryCode: routing.merchantCategoryCode,
     amount: request.amount.toFixed(2),
-    currency: "BBD",
-    note: request.note,
-    createdAt: request.createdAt,
-    testOnly: true,
+    amountMode: "fixed",
+    initiationMethod: "12",
+    reference: `RTP ${request.id.slice(0, 8)}`,
+    storeLabel: requester.walletIdentifier.slice(0, 25),
   });
 }
 
@@ -386,6 +426,7 @@ export default function WalletLabPage() {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [showWalletCatalog, setShowWalletCatalog] = useState(false);
   const [visibleWalletQrId, setVisibleWalletQrId] = useState("");
+  const [staticQrFormat, setStaticQrFormat] = useState<StaticQrFormat>("link");
   const [editingProfileId, setEditingProfileId] = useState("");
   const [profileFields, setProfileFields] =
     useState<WalletProfileFields>(DEFAULT_PROFILE_FIELDS);
@@ -433,6 +474,11 @@ export default function WalletLabPage() {
       : isBankOnlyModel(activeWallet.model)
         ? activeWallet.bankBalance
         : activeWallet.walletBalance + activeWallet.bankBalance;
+  const activeWalletEmv = buildWalletEmvPayload(activeWallet);
+  const activeWalletQrPayload =
+    staticQrFormat === "emv"
+      ? activeWalletEmv
+      : `${window.location.origin}/pay?emv=${encodeURIComponent(activeWalletEmv)}`;
 
   function persist(nextState: WalletLabState): void {
     setLab(nextState);
@@ -1523,7 +1569,9 @@ export default function WalletLabPage() {
                     )
                   }
                 >
-                  {visibleWalletQrId === wallet.id ? "Hide QR" : "Show QR"}
+                  {visibleWalletQrId === wallet.id
+                    ? "Hide static QR"
+                    : "Static receive QR"}
                 </button>
                 {wallet.isCustom && (
                   <button
@@ -1546,12 +1594,17 @@ export default function WalletLabPage() {
                   }`}
                 >
                   <SandboxQr
-                    payload={buildWalletQrPayload(wallet)}
-                    alt={`Sandbox QR for ${wallet.ownerName}`}
+                    payload={`${window.location.origin}/pay?emv=${encodeURIComponent(
+                      buildWalletEmvPayload(wallet)
+                    )}`}
+                    alt={`Reusable static payment QR for ${wallet.ownerName}`}
                     size={180}
                   />
-                  <p className="mt-3 text-center text-xs font-bold text-slate-600">
-                    Wallet identity QR, test only
+                  <p className="mt-3 text-center text-xs font-black text-slate-700">
+                    Reusable static receive QR
+                  </p>
+                  <p className="mt-1 text-center text-xs leading-5 text-slate-500">
+                    No amount or payer is embedded. The payer enters the amount after scanning.
                   </p>
                 </div>
               )}
@@ -1732,6 +1785,74 @@ export default function WalletLabPage() {
               {activeWallet.walletIdentifier}
             </div>
           </article>
+
+          <details className="group overflow-hidden rounded-[2rem] border border-emerald-200 bg-white shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
+                  Static receive QR
+                </div>
+                <div className="mt-1 text-sm font-bold text-slate-600">
+                  Reusable code for {activeWallet.ownerName}
+                </div>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800">
+                <span className="group-open:hidden">Show QR +</span>
+                <span className="hidden group-open:inline">Hide QR -</span>
+              </span>
+            </summary>
+            <div className="border-t border-emerald-100 bg-emerald-50/40 px-6 py-6">
+              <div className="mx-auto mb-5 flex max-w-xs rounded-xl bg-white p-1 shadow-sm">
+                <button
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-black ${
+                    staticQrFormat === "link"
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-600"
+                  }`}
+                  type="button"
+                  onClick={() => setStaticQrFormat("link")}
+                >
+                  Payment link
+                </button>
+                <button
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-black ${
+                    staticQrFormat === "emv"
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-600"
+                  }`}
+                  type="button"
+                  onClick={() => setStaticQrFormat("emv")}
+                >
+                  Raw EMV QR
+                </button>
+              </div>
+              <SandboxQr
+                payload={activeWalletQrPayload}
+                alt={`Reusable static payment QR for ${activeWallet.ownerName}`}
+                size={220}
+              />
+              <div className="mx-auto mt-5 max-w-sm text-center">
+                <div className="font-black text-slate-950">
+                  Pay {activeWallet.ownerName}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {staticQrFormat === "link"
+                    ? "This camera-friendly link opens the existing payment resolver with the EMV payload embedded."
+                    : "This QR contains the raw EMV-style payload for compatible payment scanners."}{" "}
+                  It is reusable and leaves the amount for the payer to enter.
+                </p>
+                <div className="mt-3 font-mono text-xs text-slate-500">
+                  {activeWallet.walletIdentifier}
+                </div>
+                <Link
+                  className="mt-5 inline-flex rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800"
+                  to={`/experimental/scan?emv=${encodeURIComponent(activeWalletEmv)}`}
+                >
+                  Open this QR in scanner
+                </Link>
+              </div>
+            </div>
+          </details>
 
           <article className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-black text-slate-950">Funding behavior</h2>
@@ -2050,7 +2171,9 @@ export default function WalletLabPage() {
               <div className="rounded-[1.5rem] border border-violet-200 bg-violet-50 p-5">
                 <div className="grid gap-5 sm:grid-cols-[180px_1fr] sm:items-center">
                   <SandboxQr
-                    payload={buildRtpQrPayload(paymentRequest, activeWallet, rtpPayer)}
+                    payload={`${window.location.origin}/pay?emv=${encodeURIComponent(
+                      buildRtpEmvPayload(paymentRequest, activeWallet)
+                    )}`}
                     alt={`Payment request QR from ${activeWallet.ownerName}`}
                     size={180}
                   />

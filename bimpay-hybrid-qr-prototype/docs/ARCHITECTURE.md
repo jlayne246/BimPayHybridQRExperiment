@@ -122,12 +122,13 @@ funds.
 
 ## Wallet QR and RTP Payloads
 
-Wallet identity and request-to-pay QR payloads are generated in the browser as explicitly marked
-`BIMPAY-SANDBOX` JSON documents. Wallet identity payloads intentionally omit balances and linked
-account metadata.
+Static wallet and request-to-pay QR payloads use the same EMV-style builder as the QR generation
+pages. Static payloads use initiation method `11` and variable amount tag `54 = ***`. The drawer
+can render either the raw payload or a camera-friendly `/pay?emv=...` resolver link.
 
-An RTP request is transient UI state until approval. Approval is implemented as a wallet transfer:
-the selected payer is debited, the requester is credited, and shared workspaces use
+RTP payloads use initiation method `12`, a fixed amount, and a request reference. Approval state is
+transient Wallet Lab state. Approval is implemented as a wallet transfer: the selected payer is
+debited, the requester is credited, and shared workspaces use
 `transfer_between_wallets_from_source` for transactional consistency and idempotency.
 
 ## Multi-Branch Merchants

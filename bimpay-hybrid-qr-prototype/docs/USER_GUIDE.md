@@ -129,11 +129,23 @@ Without an active shared workspace, transactions update browser-local state:
 - **Request payment:** creates an RTP QR and waits for the selected payer to approve it.
 - **Adjust balance:** records an explicit sandbox-only correction.
 
-### Wallet QR Codes
+### Static Wallet QR Codes
 
-Expand **Wallet accounts**, then choose **Show QR** on any profile. The generated QR identifies the
-fictional wallet and funding model but excludes linked-account names, details, and balances. QR
-generation happens entirely in the browser and does not publish the profile.
+Open the **Static receive QR** drawer directly below the active wallet's balance card. You can also
+expand **Wallet accounts** and choose **Static receive QR** on any profile. This reusable QR
+identifies the fictional recipient wallet but contains no amount, payer restriction, or expiry.
+The payer supplies the amount after scanning, making it suitable for experiments such as merchant
+counter displays, church offerings, and charity donation points.
+
+The drawer offers:
+
+- **Payment link:** a camera-friendly `/pay?emv=...` link using the existing resolver.
+- **Raw EMV QR:** the variable-amount EMV-style payload used by compatible payment scanners.
+- **Open this QR in scanner:** opens the Scanner with the active wallet payload already resolved.
+
+Both formats exclude linked-account names, details, and balances. QR generation happens entirely
+in the browser and does not publish the profile. The Scanner header includes **Back to Wallet Lab**
+for the reverse navigation.
 
 ### Request To Pay
 
@@ -148,6 +160,9 @@ Creating or scanning the QR does not alter balances. Approval debits the payer u
 funding model and credits the requester. In a shared workspace, approval uses the same atomic and
 idempotent database transfer as **Send to wallet**. RTP QR payloads are test-only application data,
 not an implementation of a production banking-network RTP standard.
+
+Unlike a static receive QR, an RTP QR carries a fixed amount and request reference in an EMV-style
+payload link. The selected payer and local approval state remain part of the Wallet Lab simulation.
 
 ### Custom Wallet Profiles
 
