@@ -141,11 +141,15 @@ The drawer offers:
 
 - **Payment link:** a camera-friendly `/pay?emv=...` link using the existing resolver.
 - **Raw EMV QR:** the variable-amount EMV-style payload used by compatible payment scanners.
-- **Open this QR in scanner:** opens the Scanner with the active wallet payload already resolved.
+- **Open Scanner:** opens the existing QR Scanner / Resolver for camera, image, or pasted input.
 
 Both formats exclude linked-account names, details, and balances. QR generation happens entirely
 in the browser and does not publish the profile. The Scanner header includes **Back to Wallet Lab**
 for the reverse navigation.
+
+The built-in catalog includes contrasting hybrid individuals. **Leah Test** has one linked
+checking account, while **Nia Test** has a default checking account and a secondary savings
+account. This makes single-source and multi-source behavior easy to compare.
 
 ### Request To Pay
 

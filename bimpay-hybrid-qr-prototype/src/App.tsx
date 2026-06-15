@@ -21,8 +21,17 @@ export default function App() {
       <div className="min-h-screen bg-slate-100">
         <nav className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
-            <NavLink className="mr-2 font-black tracking-tight text-slate-950" to="/">
-              Hybrid QR Lab
+            <NavLink
+              className="mr-2 inline-flex items-center gap-2 font-black tracking-tight text-slate-950"
+              to="/"
+            >
+              <img
+                className="h-8 w-8 rounded-lg"
+                src="/favicon.svg"
+                alt=""
+                aria-hidden="true"
+              />
+              <span>Hybrid QR Lab</span>
             </NavLink>
             <div className="flex flex-1 flex-wrap items-center gap-1">
               <NavLink className={navClass} end to="/">

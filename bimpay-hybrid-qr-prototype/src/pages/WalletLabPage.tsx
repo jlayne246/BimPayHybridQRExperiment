@@ -1846,9 +1846,9 @@ export default function WalletLabPage() {
                 </div>
                 <Link
                   className="mt-5 inline-flex rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white transition hover:bg-emerald-800"
-                  to={`/experimental/scan?emv=${encodeURIComponent(activeWalletEmv)}`}
+                  to="/experimental/scan"
                 >
-                  Open this QR in scanner
+                  Open Scanner
                 </Link>
               </div>
             </div>
