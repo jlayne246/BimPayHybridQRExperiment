@@ -7,9 +7,14 @@ import { MERCHANT_CATEGORY_OPTIONS } from "../data/merchantCategories";
 import { readJsonResponse } from "../lib/http";
 
 type AmountMode = "variable" | "fixed";
-type QrExportTemplateId = "sendable-card" | "counter-display" | "sticker" | "print-sheet";
+type QrExportTemplateId = "bimpay-accepted" | "bimpay-donations" | "bimpay-fixed";
 type QrExportSourceId = "raw" | "embedded" | "tokenized" | "complete";
-type QrExportThemeId = "ocean" | "indigo" | "sunrise" | "mint" | "mono";
+type QrOutputSize = "original" | "a5" | "a4";
+const QR_OUTPUT_SIZES = {
+  original: { label: "Original - 1134 x 1701 px", width: 1134, height: 1701 },
+  a5: { label: "A5 print - 1748 x 2480 px", width: 1748, height: 2480 },
+  a4: { label: "A4 print - 2480 x 3508 px", width: 2480, height: 3508 },
+};
 
 interface EmvField {
   tag: string;
@@ -74,17 +79,6 @@ interface QrExportTemplate {
   sizeLabel: string;
 }
 
-interface QrExportTheme {
-  id: QrExportThemeId;
-  title: string;
-  primary: string;
-  secondary: string;
-  accent: string;
-  surface: string;
-  ink: string;
-  muted: string;
-}
-
 const COUNTRY_OPTIONS = [
   { value: "BB", label: "BB — Barbados" },
   { value: "US", label: "US — United States" },
@@ -113,83 +107,10 @@ const CURRENCY_OPTIONS = [
 const SANDBOX_ACCOUNT_REFERENCE = "000000000000000";
 
 const QR_EXPORT_TEMPLATES: QrExportTemplate[] = [
-  {
-    id: "sendable-card",
-    title: "Sendable QR Card",
-    description: "Compact image for chat, email, or a payment request message.",
-    sizeLabel: "1080 x 1350 PNG",
-  },
-  {
-    id: "counter-display",
-    title: "Shop Counter Display",
-    description: "Portrait sign for a counter, till, donation point, or reception desk.",
-    sizeLabel: "1240 x 1748 PNG",
-  },
-  {
-    id: "sticker",
-    title: "Sticker / Small Sign",
-    description: "Square, low-text layout with maximum QR prominence.",
-    sizeLabel: "900 x 900 PNG",
-  },
-  {
-    id: "print-sheet",
-    title: "A4 Print Sheet",
-    description: "Printable sheet with repeated payment QR copies.",
-    sizeLabel: "2480 x 3508 PNG",
-  },
-];
+  { id: "bimpay-fixed", title: "BiMPay Fixed Price", description: "Original fixed-price artwork with an item description.", sizeLabel: "1134 x 1701 PNG" },
+  { id: "bimpay-accepted", title: "BiMPay Accepted Here", description: "Original accepted-here artwork.", sizeLabel: "1134 x 1701 PNG" },
+  { id: "bimpay-donations", title: "BiMPay Donations", description: "Original donation artwork with a custom cause.", sizeLabel: "1134 x 1701 PNG" },
 
-const QR_EXPORT_THEMES: QrExportTheme[] = [
-  {
-    id: "ocean",
-    title: "Ocean",
-    primary: "#075985",
-    secondary: "#0ea5e9",
-    accent: "#22d3ee",
-    surface: "#ecfeff",
-    ink: "#082f49",
-    muted: "#64748b",
-  },
-  {
-    id: "indigo",
-    title: "Indigo",
-    primary: "#312e81",
-    secondary: "#4f46e5",
-    accent: "#f97316",
-    surface: "#eef2ff",
-    ink: "#111827",
-    muted: "#64748b",
-  },
-  {
-    id: "sunrise",
-    title: "Sunrise",
-    primary: "#7c2d12",
-    secondary: "#ea580c",
-    accent: "#fbbf24",
-    surface: "#fff7ed",
-    ink: "#1f2937",
-    muted: "#78716c",
-  },
-  {
-    id: "mint",
-    title: "Mint",
-    primary: "#064e3b",
-    secondary: "#10b981",
-    accent: "#a3e635",
-    surface: "#ecfdf5",
-    ink: "#052e16",
-    muted: "#64748b",
-  },
-  {
-    id: "mono",
-    title: "Mono",
-    primary: "#111827",
-    secondary: "#374151",
-    accent: "#94a3b8",
-    surface: "#f8fafc",
-    ink: "#111827",
-    muted: "#64748b",
-  },
 ];
 
 function tlv(tag: string, value: string): string {
@@ -275,230 +196,18 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawWrappedText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-  maxLines = 3
-): number {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    const nextLine = currentLine ? `${currentLine} ${word}` : word;
-    if (context.measureText(nextLine).width <= maxWidth || !currentLine) {
-      currentLine = nextLine;
-      continue;
-    }
-
-    lines.push(currentLine);
-    currentLine = word;
-    if (lines.length === maxLines - 1) break;
-  }
-
-  if (currentLine && lines.length < maxLines) lines.push(currentLine);
-
-  lines.forEach((line, index) => {
-    const isLastLine = index === maxLines - 1 && words.length > line.split(/\s+/).length;
-    context.fillText(isLastLine ? `${line.replace(/\s+\S+$/, "")}...` : line, x, y + index * lineHeight);
-  });
-
-  return y + lines.length * lineHeight;
-}
-
-function drawRoundRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number
-): void {
-  const safeRadius = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + safeRadius, y);
-  context.arcTo(x + width, y, x + width, y + height, safeRadius);
-  context.arcTo(x + width, y + height, x, y + height, safeRadius);
-  context.arcTo(x, y + height, x, y, safeRadius);
-  context.arcTo(x, y, x + width, y, safeRadius);
-  context.closePath();
-}
-
-function fillRoundRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-  fillStyle: string
-): void {
-  drawRoundRect(context, x, y, width, height, radius);
-  context.fillStyle = fillStyle;
-  context.fill();
-}
-
-function strokeRoundRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-  strokeStyle: string,
-  lineWidth: number
-): void {
-  drawRoundRect(context, x, y, width, height, radius);
-  context.strokeStyle = strokeStyle;
-  context.lineWidth = lineWidth;
-  context.stroke();
-}
-
-function drawBrandMark(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  scale: number,
-  theme: QrExportTheme,
-  dark = false
-): void {
-  const size = Math.round(132 * scale);
-  const top = y - size;
-  const radius = Math.round(20 * scale);
-  const tileFill = dark ? "#f8fafc" : theme.surface;
-
-  context.save();
-  context.shadowColor = "rgba(2, 6, 23, 0.18)";
-  context.shadowBlur = 10 * scale;
-  context.shadowOffsetY = 3 * scale;
-  fillRoundRect(context, x, top, size, size, radius, tileFill);
-  context.restore();
-
-  fillRoundRect(
-    context,
-    x + size * 0.18,
-    top + size * 0.18,
-    size * 0.64,
-    size * 0.64,
-    size * 0.14,
-    theme.secondary
-  );
-  fillRoundRect(
-    context,
-    x + size * 0.18,
-    top + size * 0.34,
-    size * 0.64,
-    size * 0.42,
-    size * 0.12,
-    "#ffffff"
-  );
-  context.strokeStyle = theme.accent;
-  context.lineWidth = Math.max(2, 5 * scale);
-  context.beginPath();
-  context.moveTo(x + size * 0.2, top + size * 0.44);
-  context.lineTo(x + size * 0.62, top + size * 0.44);
-  context.quadraticCurveTo(x + size * 0.79, top + size * 0.44, x + size * 0.79, top + size * 0.58);
-  context.lineTo(x + size * 0.79, top + size * 0.64);
-  context.stroke();
-
-  fillRoundRect(
-    context,
-    x + size * 0.56,
-    top + size * 0.56,
-    size * 0.28,
-    size * 0.17,
-    size * 0.08,
-    theme.ink
-  );
-  context.fillStyle = theme.accent;
-  context.beginPath();
-  context.arc(x + size * 0.64, top + size * 0.645, size * 0.032, 0, Math.PI * 2);
-  context.fill();
-
-  context.fillStyle = theme.ink;
-  const module = size * 0.07;
-  const qrX = x + size * 0.27;
-  const qrY = top + size * 0.47;
-  [
-    [0, 0, 1.4, 1.4],
-    [2, 0, 0.8, 0.8],
-    [0, 2, 0.8, 0.8],
-    [1.2, 2, 1.5, 1.5],
-  ].forEach(([left, down, wide, tall]) => {
-    context.fillRect(qrX + module * left, qrY + module * down, module * wide, module * tall);
-  });
-}
-
-function drawQrFrame(
-  context: CanvasRenderingContext2D,
-  qrImage: HTMLImageElement,
-  x: number,
-  y: number,
-  size: number,
-  theme: QrExportTheme,
-  radius = 34
-): void {
-  fillRoundRect(context, x - 34, y - 34, size + 68, size + 68, radius, "#ffffff");
-  strokeRoundRect(context, x - 34, y - 34, size + 68, size + 68, radius, theme.accent, 6);
-  context.drawImage(qrImage, x, y, size, size);
-}
-
-function drawWaveFooter(
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  theme: QrExportTheme,
-  offset = 0
-): void {
-  context.beginPath();
-  context.moveTo(0, height - 150 + offset);
-  context.bezierCurveTo(width * 0.26, height - 245 + offset, width * 0.52, height - 60 + offset, width, height - 135 + offset);
-  context.lineTo(width, height);
-  context.lineTo(0, height);
-  context.closePath();
-  context.fillStyle = theme.accent;
-  context.fill();
-
-  context.beginPath();
-  context.moveTo(0, height - 118 + offset);
-  context.bezierCurveTo(width * 0.28, height - 198 + offset, width * 0.58, height - 8 + offset, width, height - 92 + offset);
-  context.lineTo(width, height);
-  context.lineTo(0, height);
-  context.closePath();
-  context.fillStyle = theme.primary;
-  context.globalAlpha = 0.12;
-  context.fill();
-  context.globalAlpha = 1;
-}
-
-function templateDimensions(templateId: QrExportTemplateId): { width: number; height: number } {
-  switch (templateId) {
-    case "counter-display":
-      return { width: 1240, height: 1748 };
-    case "sticker":
-      return { width: 900, height: 900 };
-    case "print-sheet":
-      return { width: 2480, height: 3508 };
-    case "sendable-card":
-    default:
-      return { width: 1080, height: 1350 };
-  }
+function templateDimensions() {
+  return { width: 1134, height: 1701 };
 }
 
 async function renderQrTemplatePng({
   templateId,
   qr,
-  merchantName,
-  merchantCity,
-  amountMode,
-  amount,
-  reference,
-  sourceLabel,
-  theme,
+  donationCause = "",
+  fixedDescription = "",
+  fixedPrice = "",
+  outputSize = "original",
+  qrPayload = "",
 }: {
   templateId: QrExportTemplateId;
   qr: string;
@@ -508,188 +217,102 @@ async function renderQrTemplatePng({
   amount: string;
   reference: string;
   sourceLabel: string;
-  theme: QrExportTheme;
+  donationCause?: string;
+  fixedDescription?: string;
+  fixedPrice?: string;
+  outputSize?: QrOutputSize;
+  qrPayload?: string;
 }): Promise<string> {
-  const { width, height } = templateDimensions(templateId);
-  const qrImage = await loadImage(qr);
+  const { width, height } = templateDimensions();
+  const output = QR_OUTPUT_SIZES[outputSize];
+  const exportScale = Math.min(output.width / width, output.height / height);
+  const qrImage = await loadImage(qrPayload ? await QRCode.toDataURL(qrPayload, {
+    width: Math.ceil(720 * exportScale), margin: 4, errorCorrectionLevel: "M",
+  }) : qr);
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = output.width;
+  canvas.height = output.height;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not create export canvas.");
-
-  const displayName = merchantName.trim().toUpperCase() || "TEST ONLY";
-  const merchantDisplayName = displayName === "TEST ONLY" ? "SANDBOX MERCHANT" : displayName;
-  const displayCity = merchantCity.trim().toUpperCase() || "SANDBOX";
-  const amountText = amountMode === "variable" ? "Enter amount after scanning" : `Amount BBD ${amount}`;
-  const referenceText = reference.trim().toUpperCase() === "TEST ONLY" ? "Sandbox QR" : reference.trim() || "Sandbox QR";
-
-  context.fillStyle = theme.surface;
-  context.fillRect(0, 0, width, height);
-  context.fillStyle = theme.ink;
-
-  if (templateId === "print-sheet") {
-    context.fillStyle = "#ffffff";
-    context.fillRect(110, 110, width - 220, height - 220);
-    strokeRoundRect(context, 110, 110, width - 220, height - 220, 32, "#cbd5e1", 4);
-
-    fillRoundRect(context, 110, 110, width - 220, 430, 32, theme.primary);
-    context.fillRect(110, 340, width - 220, 200);
-    drawBrandMark(context, 230, 265, 1.35, theme, true);
-
-    context.textAlign = "center";
-    context.fillStyle = "#ffffff";
-    context.font = "900 96px Arial";
-    context.fillText("SCAN TO PAY", width / 2, 320);
-    context.font = "700 52px Arial";
-    context.fillText(merchantDisplayName, width / 2, 425);
-    context.font = "500 36px Arial";
-    context.fillText(`${displayCity} / ${amountText}`, width / 2, 485);
-
-    const qrSize = 700;
-    const positions = [
-      [340, 680],
-      [1440, 680],
-      [340, 1900],
-      [1440, 1900],
-    ];
-
-    positions.forEach(([x, y], index) => {
-      fillRoundRect(context, x - 45, y - 45, qrSize + 90, qrSize + 220, 38, "#ffffff");
-      strokeRoundRect(context, x - 45, y - 45, qrSize + 90, qrSize + 220, 38, "#e2e8f0", 3);
-      drawQrFrame(context, qrImage, x, y, qrSize, theme, 28);
-      context.fillStyle = theme.ink;
-      context.font = "800 36px Arial";
-      context.fillText(`${merchantDisplayName} ${index + 1}`, x + qrSize / 2, y + qrSize + 72);
-      context.font = "500 28px Arial";
-      context.fillText(referenceText, x + qrSize / 2, y + qrSize + 125);
-    });
-
-    drawWaveFooter(context, width, height, theme, -55);
-    fillRoundRect(context, width / 2 - 260, height - 240, 520, 62, 31, theme.accent);
-    context.font = "900 32px Arial";
-    context.fillStyle = "#ffffff";
-    context.fillText("TEST ONLY", width / 2, height - 199);
-    return canvas.toDataURL("image/png");
-  }
-
-  const isSticker = templateId === "sticker";
-  const isCounter = templateId === "counter-display";
-  const margin = isSticker ? 58 : isCounter ? 92 : 72;
-  const qrSize = isSticker ? 430 : isCounter ? 760 : 600;
-
-  fillRoundRect(context, margin, margin, width - margin * 2, height - margin * 2, isSticker ? 34 : 42, "#ffffff");
-  strokeRoundRect(context, margin, margin, width - margin * 2, height - margin * 2, isSticker ? 34 : 42, "#cbd5e1", isSticker ? 4 : 5);
-
-  context.textAlign = "center";
-  context.fillStyle = theme.ink;
-
-  if (isSticker) {
-    const innerWidth = width - margin * 2;
-    fillRoundRect(context, margin, margin, innerWidth, 110, 34, theme.primary);
-    context.fillRect(margin, margin + 70, innerWidth, 48);
-    drawBrandMark(context, 96, 144, 0.62, theme, true);
-    context.fillStyle = "#ffffff";
-    context.font = "900 34px Arial";
-    context.textAlign = "right";
-    context.fillText("PAY HERE", width - 96, 116);
-
-    fillRoundRect(context, margin + 30, 168, innerWidth - 60, 44, 22, theme.accent);
-    context.fillStyle = "#ffffff";
-    context.font = "900 24px Arial";
-    context.textAlign = "center";
-    context.fillText("TEST ONLY", width / 2, 198);
-
-    drawQrFrame(context, qrImage, (width - qrSize) / 2, 250, qrSize, theme, 24);
-    context.textAlign = "center";
-    context.fillStyle = theme.ink;
-    context.font = "800 26px Arial";
-    drawWrappedText(context, merchantDisplayName, width / 2, 760, width - 160, 32, 2);
-    context.font = "600 20px Arial";
-    context.fillStyle = theme.muted;
-    context.fillText(amountText, width / 2, 810);
-    context.fillStyle = theme.primary;
-    context.fillRect(margin + 42, height - margin - 12, innerWidth - 84, 8);
-    return canvas.toDataURL("image/png");
-  }
-
-  if (isCounter) {
-    const headerHeight = 176;
-    const innerWidth = width - margin * 2;
-    fillRoundRect(context, margin, margin, innerWidth, headerHeight, 42, theme.primary);
-    context.fillRect(margin, margin + headerHeight - 30, innerWidth, 38);
-    drawBrandMark(context, margin + 58, 180, 0.68, theme, true);
-
-    context.textAlign = "right";
-    context.fillStyle = "#ffffff";
-    context.font = "900 46px Arial";
-    context.fillText("ACCEPTED HERE", width - margin - 58, 154);
-    context.font = "800 28px Arial";
-    context.fillStyle = theme.accent;
-    context.fillText("SCAN & PAY", width - margin - 58, 198);
-
-    fillRoundRect(context, margin + 78, 306, innerWidth - 156, 58, 29, theme.accent);
-    context.textAlign = "center";
-    context.fillStyle = "#ffffff";
-    context.font = "900 34px Arial";
-    context.fillText("TEST ONLY", width / 2, 345);
-
-    context.fillStyle = theme.ink;
-    context.font = "800 42px Arial";
-    drawWrappedText(context, merchantDisplayName, width / 2, 438, width - margin * 3, 50, 2);
-
-    context.fillStyle = theme.muted;
-    context.font = "600 27px Arial";
-    context.fillText(`${displayCity} / ${amountText}`, width / 2, 508);
-
-    const counterQrSize = 720;
-    const counterQrY = 610;
-    drawQrFrame(context, qrImage, (width - counterQrSize) / 2, counterQrY, counterQrSize, theme, 34);
-
-    context.fillStyle = theme.ink;
-    context.font = "800 30px Arial";
-    context.fillText(referenceText, width / 2, 1442);
-    context.font = "700 22px Arial";
-    context.fillStyle = theme.muted;
-    context.fillText(sourceLabel, width / 2, 1490);
-    fillRoundRect(context, margin + 70, height - margin - 34, innerWidth - 140, 18, 9, theme.accent);
-    return canvas.toDataURL("image/png");
-  }
-
-  const headerHeight = 240;
-  fillRoundRect(context, margin, margin, width - margin * 2, headerHeight, 42, theme.primary);
-  context.fillRect(margin, margin + headerHeight - 34, width - margin * 2, 44);
-  drawBrandMark(context, margin + 72, 186, 0.78, theme, true);
   context.fillStyle = "#ffffff";
-  context.textAlign = "center";
-  context.font = "900 56px Arial";
-  context.fillText("ACCEPTED HERE", width / 2 + 120, 154);
-  context.font = "800 34px Arial";
-  context.fillStyle = theme.accent;
-  context.fillText("SCAN & PAY", width / 2 + 120, 208);
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.translate((canvas.width - width * exportScale) / 2, (canvas.height - height * exportScale) / 2);
+  context.scale(exportScale, exportScale);
 
-  fillRoundRect(context, margin + 72, 305, width - margin * 2 - 144, 52, 26, theme.accent);
-  context.fillStyle = "#ffffff";
-  context.font = "900 30px Arial";
-  context.fillText("TEST ONLY", width / 2, 341);
+  if (templateId.startsWith("bimpay-")) {
+    if (templateId === "bimpay-fixed" && !fixedPrice) {
+      throw new Error("Generate a fixed-amount QR to preview or export this template.");
+    }
+    if (templateId === "bimpay-fixed" && fixedDescription.length > 30) {
+      throw new Error("Description must be 30 characters or fewer, including spaces.");
+    }
+    const artwork = await loadImage(`/templates/${templateId}.svg`);
+    context.drawImage(artwork, 0, 0, width, height);
+    // The artwork uses points; this export renders at four pixels per point.
+    context.fillStyle = "#ffffff";
+    context.fillRect(113, 510, 908, 778);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(qrImage, 207, 539, 720, 720);
+    if (templateId === "bimpay-fixed") {
+      context.save();
+      context.fillStyle = "#0114a8";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.font = "700 56px Arial";
+      const description = fixedDescription.trim().toUpperCase();
+      let lines = description ? [description] : [];
+      if (context.measureText(description).width > 780) {
+        const breaks = Array.from(description.matchAll(/\s+/g), (match) => match.index);
+        const candidates = breaks.length ? breaks : Array.from({ length: description.length - 1 }, (_, index) => index + 1);
+        const split = candidates.reduce((best, index) => {
+          const widest = (position: number) => Math.max(
+            context.measureText(description.slice(0, position).trim()).width,
+            context.measureText(description.slice(position).trim()).width
+          );
+          return widest(index) < widest(best) ? index : best;
+        }, candidates[0]);
+        lines = [description.slice(0, split).trim(), description.slice(split).trim()];
+      }
+      const widestLine = Math.max(780, ...lines.map((line) => context.measureText(line).width));
+      context.font = `700 ${56 * 780 / widestLine}px Arial`;
+      // Centre the entire description/price block within the artwork's header.
+      const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
+      const gap = lines.length ? 40 : 0;
+      const top = 312 - (descriptionHeight + gap + 80) / 2;
+      lines.forEach((line, index) => context.fillText(line, width / 2, top + 28 + index * 68));
+      context.font = "700 80px Arial";
+      context.fillText(fixedPrice, width / 2, top + descriptionHeight + gap + 40, 800);
+      context.restore();
+    }
+    if (templateId === "bimpay-donations") {
+      const cause = donationCause.trim().slice(0, 30).toUpperCase();
+      context.fillStyle = "#0114a8";
+      context.textAlign = "center";
+      context.font = "700 80px Arial";
+      const words = cause.split(/\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let line = "";
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && context.measureText(next).width > 800) {
+          lines.push(line);
+          line = word;
+        } else line = next;
+      }
+      if (line) lines.push(line);
+      const visibleLines = lines.length > 2 ? [lines[0], lines.slice(1).join(" ")] : lines;
+      visibleLines.forEach((text, index) => {
+        const fontSize = Math.min(80, 80 * 800 / Math.max(800, context.measureText(text).width));
+        context.save();
+        context.font = `700 ${fontSize}px Arial`;
+        context.fillText(text, width / 2, visibleLines.length === 1 ? 386 : 344 + index * 96);
+        context.restore();
+      });
+    }
+    return canvas.toDataURL("image/png");
+  }
 
-  context.fillStyle = theme.ink;
-  context.font = "800 38px Arial";
-  drawWrappedText(context, merchantDisplayName, width / 2, 430, width - margin * 3, 48, 2);
-
-  const qrY = 485;
-  drawQrFrame(context, qrImage, (width - qrSize) / 2, qrY, qrSize, theme, 34);
-
-  context.fillStyle = theme.ink;
-  context.font = "800 31px Arial";
-  context.fillText(amountText, width / 2, qrY + qrSize + 92);
-  context.font = "500 24px Arial";
-  context.fillStyle = theme.muted;
-  context.fillText(`${displayCity} / ${referenceText}`, width / 2, qrY + qrSize + 135);
-  context.fillStyle = theme.primary;
-  context.fillRect(margin + 72, height - margin - 20, width - margin * 2 - 144, 12);
-
-  return canvas.toDataURL("image/png");
+  throw new Error("Unknown export template.");
 }
 
 export default function CreatePaymentQrPage() {
@@ -735,6 +358,8 @@ export default function CreatePaymentQrPage() {
   const [tokenizedPaymentLink, setTokenizedPaymentLink] = useState("");
   const [completePaymentLink, setCompletePaymentLink] = useState("");
   const [rawQr, setRawQr] = useState("");
+  const [generatedPayload, setGeneratedPayload] = useState("");
+  const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
   const [embeddedLinkQr, setEmbeddedLinkQr] = useState("");
   const [tokenizedLinkQr, setTokenizedLinkQr] = useState("");
   const [completeLinkQr, setCompleteLinkQr] = useState("");
@@ -742,9 +367,8 @@ export default function CreatePaymentQrPage() {
   const [amountMode, setAmountMode] = useState<AmountMode>("variable");
   const [advancedMode, setAdvancedMode] = useState(false);
   const [exportTemplateId, setExportTemplateId] =
-    useState<QrExportTemplateId>("sendable-card");
-  const [exportSourceId, setExportSourceId] = useState<QrExportSourceId>("embedded");
-  const [exportThemeId, setExportThemeId] = useState<QrExportThemeId>("ocean");
+    useState<QrExportTemplateId>("bimpay-accepted");
+  const [exportSourceId, setExportSourceId] = useState<QrExportSourceId>("raw");
 
   const merchantAccountTemplate = useMemo(() => {
     return [
@@ -801,7 +425,7 @@ export default function CreatePaymentQrPage() {
       id: "raw",
       label: "Raw EMV payload",
       description: "Best for compatible sandbox scanners.",
-      value: emvPayload,
+      value: generatedPayload,
       qr: rawQr,
     },
     {
@@ -919,6 +543,9 @@ export default function CreatePaymentQrPage() {
 
       setToken(createdToken);
       setRawQr(rawQrDataUrl);
+      setGeneratedPayload(emvPayload);
+      const currencyCode = CURRENCY_OPTIONS.find((option) => option.value === coreFields.currency)?.label.match(/\b[A-Z]{3}\b/)?.[0] ?? coreFields.currency;
+      setGeneratedFixedPrice(amountMode === "fixed" ? `${currencyCode} $${Number(coreFields.amount).toFixed(2)}` : "");
       setEmbeddedPaymentLink(embeddedLink);
       setTokenizedPaymentLink(tokenizedLink);
       setEmbeddedLinkQr(embeddedLinkQrDataUrl);
@@ -1211,6 +838,7 @@ export default function CreatePaymentQrPage() {
 
         <section className="space-y-6">
           <QrTemplateExporter
+            fixedPrice={generatedFixedPrice}
             amount={coreFields.amount}
             amountMode={amountMode}
             merchantCity={coreFields.merchantCity}
@@ -1222,11 +850,9 @@ export default function CreatePaymentQrPage() {
             }
             selectedSourceId={exportSourceId}
             selectedTemplateId={exportTemplateId}
-            selectedThemeId={exportThemeId}
             sources={qrExportSources}
             onSourceChange={setExportSourceId}
             onTemplateChange={setExportTemplateId}
-            onThemeChange={setExportThemeId}
           />
 
           <OutputBlock
@@ -1396,6 +1022,7 @@ function TemplatePreview({ title, value }: TemplatePreviewProps) {
 }
 
 interface QrTemplateExporterProps {
+  fixedPrice: string;
   amount: string;
   amountMode: AmountMode;
   merchantCity: string;
@@ -1403,14 +1030,13 @@ interface QrTemplateExporterProps {
   reference: string;
   selectedSourceId: QrExportSourceId;
   selectedTemplateId: QrExportTemplateId;
-  selectedThemeId: QrExportThemeId;
   sources: QrExportSource[];
   onSourceChange: (value: QrExportSourceId) => void;
   onTemplateChange: (value: QrExportTemplateId) => void;
-  onThemeChange: (value: QrExportThemeId) => void;
 }
 
 function QrTemplateExporter({
+  fixedPrice,
   amount,
   amountMode,
   merchantCity,
@@ -1418,29 +1044,31 @@ function QrTemplateExporter({
   reference,
   selectedSourceId,
   selectedTemplateId,
-  selectedThemeId,
   sources,
   onSourceChange,
   onTemplateChange,
-  onThemeChange,
 }: QrTemplateExporterProps) {
   const [exportMessage, setExportMessage] = useState("");
+  const [donationCause, setDonationCause] = useState("");
+  const [fixedDescription, setFixedDescription] = useState("");
+  const [outputSize, setOutputSize] = useState<QrOutputSize>("a4");
   const [previewDataUrl, setPreviewDataUrl] = useState("");
   const [previewMessage, setPreviewMessage] = useState("");
   const selectedTemplate =
     QR_EXPORT_TEMPLATES.find((template) => template.id === selectedTemplateId) ??
     QR_EXPORT_TEMPLATES[0];
-  const selectedTheme =
-    QR_EXPORT_THEMES.find((theme) => theme.id === selectedThemeId) ?? QR_EXPORT_THEMES[0];
   const selectedSource =
     sources.find((source) => source.id === selectedSourceId) ?? sources[0];
   const generatedSources = sources.filter((source) => source.qr);
   const amountLabel =
     amountMode === "variable" ? "Customer enters amount" : `Fixed amount BBD ${amount}`;
-  const activePreviewDataUrl = selectedSource.qr ? previewDataUrl : "";
-  const previewPlaceholder = !selectedSource.qr
+  const descriptionError = selectedTemplate.id === "bimpay-fixed" && fixedDescription.length > 30
+    ? `Description is ${fixedDescription.length} characters. Remove ${fixedDescription.length - 30} to fit the 30-character limit (including spaces).`
+    : "";
+  const activePreviewDataUrl = selectedSource.qr && !descriptionError ? previewDataUrl : "";
+  const previewPlaceholder = descriptionError || (!selectedSource.qr
     ? "Generate the selected QR source to preview this template."
-    : previewMessage || "Rendering preview...";
+    : previewMessage || "Rendering preview...");
 
   async function createTemplatePng(source = selectedSource): Promise<string> {
     if (!source.qr) {
@@ -1456,7 +1084,11 @@ function QrTemplateExporter({
       amount,
       reference,
       sourceLabel: source.label,
-      theme: selectedTheme,
+      donationCause,
+      fixedDescription,
+      fixedPrice,
+      outputSize,
+      qrPayload: source.value,
     });
   }
 
@@ -1478,7 +1110,11 @@ function QrTemplateExporter({
       amount,
       reference,
       sourceLabel: selectedSource.label,
-      theme: selectedTheme,
+      donationCause,
+      fixedDescription,
+      fixedPrice,
+      outputSize,
+      qrPayload: selectedSource.value,
     })
       .then((dataUrl) => {
         if (cancelled) return;
@@ -1495,6 +1131,11 @@ function QrTemplateExporter({
       cancelled = true;
     };
   }, [
+    outputSize,
+    selectedSource.value,
+    fixedDescription,
+    fixedPrice,
+    donationCause,
     amount,
     amountMode,
     merchantCity,
@@ -1503,7 +1144,6 @@ function QrTemplateExporter({
     selectedSource.label,
     selectedSource.qr,
     selectedTemplate.id,
-    selectedTheme,
   ]);
 
   async function downloadTemplate(): Promise<void> {
@@ -1511,7 +1151,7 @@ function QrTemplateExporter({
       const dataUrl = await createTemplatePng();
       downloadDataUrl(
         dataUrl,
-        `${safeFileName(`${merchantName}-${selectedTemplate.title}`)}.png`
+        `${safeFileName(`${merchantName}-${selectedTemplate.title}-${outputSize}`)}.png`
       );
       setExportMessage("Template PNG downloaded.");
     } catch (error) {
@@ -1524,7 +1164,7 @@ function QrTemplateExporter({
       const dataUrl = await createTemplatePng();
       const file = await dataUrlToFile(
         dataUrl,
-        `${safeFileName(`${merchantName}-${selectedTemplate.title}`)}.png`
+        `${safeFileName(`${merchantName}-${selectedTemplate.title}-${outputSize}`)}.png`
       );
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -1574,40 +1214,47 @@ function QrTemplateExporter({
                 selectedTemplate.id === template.id ? "text-cyan-200" : "text-cyan-700"
               }`}
             >
-              {template.sizeLabel}
+              {QR_OUTPUT_SIZES[outputSize].label}
             </span>
           </button>
         ))}
       </div>
 
-      <div className="mt-5">
-        <div className="mb-2 text-sm font-semibold text-slate-700">Colour variation</div>
-        <div className="grid gap-2 sm:grid-cols-5">
-          {QR_EXPORT_THEMES.map((theme) => (
-            <button
-              type="button"
-              key={theme.id}
-              onClick={() => onThemeChange(theme.id)}
-              className={`rounded-2xl border p-3 text-left transition ${
-                selectedTheme.id === theme.id
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"
-              }`}
-            >
-              <span className="flex gap-1">
-                {[theme.primary, theme.secondary, theme.accent].map((color) => (
-                  <span
-                    key={color}
-                    className="h-5 w-5 rounded-full border border-white/70"
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </span>
-              <span className="mt-2 block text-xs font-black">{theme.title}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <label className="mt-5 block">
+        <span className="mb-2 block text-sm font-semibold text-slate-700">Output size</span>
+        <select className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm" value={outputSize} onChange={(event) => setOutputSize(event.target.value as QrOutputSize)}>
+          {Object.entries(QR_OUTPUT_SIZES).map(([value, size]) => <option key={value} value={value}>{size.label}</option>)}
+        </select>
+      </label>
+
+      {selectedTemplate.id === "bimpay-fixed" && (
+        <label className="mt-5 block">
+          <span className="mb-2 block text-sm font-semibold text-slate-700">Item / Description</span>
+          <input
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
+            value={fixedDescription}
+            aria-invalid={Boolean(descriptionError)}
+            aria-describedby="fixed-description-feedback"
+            onChange={(event) => setFixedDescription(event.target.value)}
+          />
+          <span id="fixed-description-feedback" aria-live="polite" className={`mt-1 block text-xs ${descriptionError ? "text-red-700" : "text-slate-500"}`}>
+            {descriptionError || `${fixedDescription.length}/30 characters (including spaces)`}
+          </span>
+        </label>
+      )}
+
+      {selectedTemplate.id === "bimpay-donations" && (
+        <label className="mt-5 block">
+          <span className="mb-2 block text-sm font-semibold text-slate-700">Give to / Cause</span>
+          <input
+            className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
+            value={donationCause}
+            maxLength={30}
+            onChange={(event) => setDonationCause(event.target.value.slice(0, 30))}
+          />
+          <span className="mt-1 block text-xs text-slate-500">{donationCause.length}/30</span>
+        </label>
+      )}
 
       <div className="mt-5 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
         <label className="block">
@@ -1633,7 +1280,6 @@ function QrTemplateExporter({
           <div className="flex items-start gap-4">
             <div
               className="grid h-28 w-28 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white p-2"
-              style={{ boxShadow: `inset 0 -8px 0 ${selectedTheme.accent}` }}
             >
               {selectedSource.qr ? (
                 <img src={selectedSource.qr} alt="" className="h-full w-full" />
@@ -1645,7 +1291,7 @@ function QrTemplateExporter({
             </div>
             <div className="min-w-0">
               <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                {selectedTemplate.title} / {selectedTheme.title}
+                {selectedTemplate.title}
               </div>
               <div className="mt-2 text-xl font-black text-slate-950 break-words">
                 {merchantName || "TEST ONLY"}
@@ -1668,11 +1314,11 @@ function QrTemplateExporter({
           <div>
             <div className="text-sm font-black text-slate-950">Template preview</div>
             <div className="text-xs font-semibold text-slate-500">
-              Matches the exported PNG for the selected layout and colour.
+              Matches the exported PNG for the selected layout and size.
             </div>
           </div>
           <div className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-500">
-            {selectedTemplate.sizeLabel}
+            {QR_OUTPUT_SIZES[outputSize].label}
           </div>
         </div>
 
@@ -1701,7 +1347,7 @@ function QrTemplateExporter({
         <button
           type="button"
           onClick={() => void downloadTemplate()}
-          disabled={!selectedSource.qr}
+          disabled={!selectedSource.qr || Boolean(descriptionError)}
           className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Download Template PNG
@@ -1709,7 +1355,7 @@ function QrTemplateExporter({
         <button
           type="button"
           onClick={() => void shareTemplate()}
-          disabled={!selectedSource.qr}
+          disabled={!selectedSource.qr || Boolean(descriptionError)}
           className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
         >
           Share Template

@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cyan-950: #0114a8;
+  --color-cyan-700: #00677c;
+  --color-cyan-200: #bdeff6;
+  --color-slate-950: #142638;
+}
+
+:root {
+  --brand-blue: #0114a8;
+  --brand-cyan: #00b5d4;
+  --brand-pale: #dff2f7;
+  font-family: "Public Sans Variable", "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #152e3b;
+  background: #f5f9fb;
+  letter-spacing: 0;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, select { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+input, select { min-width: 0; max-width: 100%; }
+select { text-align: left; text-align-last: auto; padding-left: 8px; padding-right: 28px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--brand-blue); outline-offset: 3px; }
+.utility-header { background: var(--brand-pale); color: var(--brand-blue); border-bottom: 5px solid var(--brand-cyan); }
+.utility-title { display: flex; flex-direction: row; align-items: center; gap: 6px; width: fit-content; max-width: 100%; }
+.utility-title > span { transform: translateY(4px); }
+.utility-logo { display: block; width: 190px; max-width: 100%; height: auto; }
+@media (max-width: 480px) { .utility-logo { width: 150px; } }
+.review-notice { border-left: 3px solid var(--brand-cyan); padding-left: 12px; }
+button.bg-cyan-950:hover:not(:disabled) { background: #001080; }
