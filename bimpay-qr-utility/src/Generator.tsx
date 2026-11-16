@@ -1003,6 +1003,7 @@ function QrTemplateExporter({
     onTemplateChange,
 }: QrTemplateExporterProps) {
   const [exportMessage, setExportMessage] = useState("");
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [donationCause, setDonationCause] = useState("");
   const [fixedDescription, setFixedDescription] = useState("");
   const [outputSize, setOutputSize] = useState<QrOutputSize>("a4");
@@ -1140,6 +1141,43 @@ function QrTemplateExporter({
     }
   }
 
+  async function downloadTemplatePdf(): Promise<void> {
+    setExportingPdf(true);
+    setExportMessage("Preparing PDF...");
+    try {
+      const imageData = await createTemplatePng();
+      const { PDFDocument } = await import("pdf-lib");
+      const pdf = await PDFDocument.create();
+      const landscape = selectedTemplate.id.startsWith("bimpay-landscape");
+      const millimetresToPoints = (value: number) => value * 72 / 25.4;
+      let pageWidth: number;
+      let pageHeight: number;
+      if (outputSize === "original") {
+        const dimensions = templateDimensions(selectedTemplate.id);
+        pageWidth = dimensions.width / 4;
+        pageHeight = dimensions.height / 4;
+      } else {
+        const [shortSide, longSide] = outputSize === "a4" ? [210, 297] : [148, 210];
+        pageWidth = millimetresToPoints(landscape ? longSide : shortSide);
+        pageHeight = millimetresToPoints(landscape ? shortSide : longSide);
+      }
+      const page = pdf.addPage([pageWidth, pageHeight]);
+      const artwork = await pdf.embedPng(imageData);
+      page.drawImage(artwork, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+      pdf.setTitle(`${selectedTemplate.title} - ${merchantName || "Payment QR"}`);
+      pdf.setCreator("BiMPay QR Utility");
+      const bytes = await pdf.save();
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }));
+      downloadDataUrl(url, `${safeFileName(`${merchantName}-${selectedTemplate.title}-${outputSize}`)}.pdf`);
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportMessage("Template PDF downloaded.");
+    } catch (error) {
+      setExportMessage(error instanceof Error ? error.message : "Could not export PDF.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <EditorSection
       title="Export Templates"
@@ -1251,7 +1289,7 @@ function QrTemplateExporter({
           <div>
             <div className="text-sm font-black text-slate-950">Template preview</div>
             <div className="text-xs font-semibold text-slate-500">
-              Matches the exported PNG for the selected layout and size.
+              Matches the exported PNG and PDF for the selected layout and size.
             </div>
           </div>
           <div className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-500">
@@ -1291,6 +1329,14 @@ function QrTemplateExporter({
         </button>
         <button
           type="button"
+          onClick={() => void downloadTemplatePdf()}
+          disabled={!selectedSource.qr || Boolean(descriptionError) || exportingPdf}
+          className="rounded-lg border border-cyan-950 bg-white px-4 py-3 text-sm font-black text-cyan-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+        >
+          {exportingPdf ? "Preparing PDF..." : "Download Template PDF"}
+        </button>
+        <button
+          type="button"
           onClick={() => void shareTemplate()}
           disabled={!selectedSource.qr || Boolean(descriptionError)}
           className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
@@ -1300,7 +1346,7 @@ function QrTemplateExporter({
       </div>
 
       {exportMessage && (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700">
+        <div role="status" className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700">
           {exportMessage}
         </div>
       )}
