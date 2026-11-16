@@ -299,13 +299,16 @@ async function renderQrTemplatePng({
     }
     if (merchantTemplate) {
       context.save();
+      // Blank the artwork's fixed heading so the full text block can be centred.
+      context.fillStyle = "#dff2f9";
+      if (landscape) context.fillRect(100, 150, 780, 590);
+      else context.fillRect(114, 160, 906, 340);
       context.fillStyle = "#0114a8";
       context.textAlign = "center";
       context.textBaseline = "middle";
       const name = merchantName.trim().toUpperCase();
       const maxWidth = landscape ? 700 : 780;
       const centerX = landscape ? 497 : width / 2;
-      const centerY = landscape ? 340 : 280;
       context.font = '700 80px "Montserrat Variable"';
       let lines = [name];
       if (context.measureText(name).width > maxWidth) {
@@ -317,7 +320,15 @@ async function renderQrTemplatePng({
       }
       const widestLine = Math.max(maxWidth, ...lines.map((line) => context.measureText(line).width));
       context.font = `700 ${80 * maxWidth / widestLine}px "Montserrat Variable"`;
-      lines.forEach((line, index) => context.fillText(line, centerX, centerY + (index - (lines.length - 1) / 2) * 96));
+      const subtitleLines = landscape ? ["ACCEPTS QR", "PAYMENTS"] : ["ACCEPTS QR PAYMENTS"];
+      const subtitleSize = landscape ? 56 : 52;
+      const nameHeight = lines.length * 96 - 16;
+      const subtitleHeight = subtitleLines.length * (subtitleSize + 12) - 12;
+      const gap = 32;
+      const top = (landscape ? 438 : 312) - (nameHeight + gap + subtitleHeight) / 2;
+      lines.forEach((line, index) => context.fillText(line, centerX, top + 40 + index * 96));
+      context.font = `700 ${subtitleSize}px "Montserrat Variable"`;
+      subtitleLines.forEach((line, index) => context.fillText(line, centerX, top + nameHeight + gap + subtitleSize / 2 + index * (subtitleSize + 12)));
       context.restore();
     }
     if (fixedTemplate) {
