@@ -240,6 +240,10 @@ async function renderQrTemplatePng({
   const landscape = templateId.startsWith("bimpay-landscape");
   const fixedTemplate = templateId.endsWith("fixed");
   const donationTemplate = templateId.endsWith("donations");
+  const exportFont = landscape ? "Arial" : '"Montserrat Variable"';
+  if (!landscape && (fixedTemplate || donationTemplate)) {
+    await document.fonts.load(`700 80px ${exportFont}`);
+  }
   const textCenter = landscape ? 453 : width / 2;
   const textWidth = landscape ? 700 : 780;
   const qrSize = landscape ? 580 : 720;
@@ -280,7 +284,7 @@ async function renderQrTemplatePng({
       context.fillStyle = "#0114a8";
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.font = "700 56px Arial";
+      context.font = `700 56px ${exportFont}`;
       const description = fixedDescription.trim().toUpperCase();
       let lines = description ? [description] : [];
       if (context.measureText(description).width > textWidth) {
@@ -296,13 +300,13 @@ async function renderQrTemplatePng({
         lines = [description.slice(0, split).trim(), description.slice(split).trim()];
       }
       const widestLine = Math.max(textWidth, ...lines.map((line) => context.measureText(line).width));
-      context.font = `700 ${56 * textWidth / widestLine}px Arial`;
+      context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
       // Centre the entire description/price block within the artwork's header.
       const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
       const gap = lines.length ? 40 : 0;
       const top = (landscape ? 438 : 312) - (descriptionHeight + gap + 80) / 2;
       lines.forEach((line, index) => context.fillText(line, textCenter, top + 28 + index * 68));
-      context.font = "700 80px Arial";
+      context.font = `700 80px ${exportFont}`;
       context.fillText(fixedPrice, textCenter, top + descriptionHeight + gap + 40, textWidth);
       context.restore();
     }
@@ -310,7 +314,7 @@ async function renderQrTemplatePng({
       const cause = donationCause.trim().slice(0, 30).toUpperCase();
       context.fillStyle = "#0114a8";
       context.textAlign = "center";
-      context.font = "700 80px Arial";
+      context.font = `700 80px ${exportFont}`;
       const words = cause.split(/\s+/).filter(Boolean);
       const lines: string[] = [];
       let line = "";
@@ -326,7 +330,7 @@ async function renderQrTemplatePng({
       visibleLines.forEach((text, index) => {
         const fontSize = Math.min(80, 80 * textWidth / Math.max(textWidth, context.measureText(text).width));
         context.save();
-        context.font = `700 ${fontSize}px Arial`;
+        context.font = `700 ${fontSize}px ${exportFont}`;
         context.fillText(text, textCenter, (landscape ? 126 : 0) + (visibleLines.length === 1 ? 386 : 344 + index * 96));
         context.restore();
       });
