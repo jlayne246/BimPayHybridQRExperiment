@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import QRCode from "qrcode";
 const BIMPAY_GUI = "bb.org.cb.mpqr";
@@ -214,6 +214,75 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+async function prepareQrLogo(source: string): Promise<string> {
+  const image = await loadImage(source);
+  const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not prepare logo.");
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  let left = canvas.width, top = canvas.height, right = -1, bottom = -1;
+  // Find visible artwork, excluding transparent and near-white outer padding.
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const index = (y * canvas.width + x) * 4;
+      if (data[index + 3] <= 16 || (data[index] >= 245 && data[index + 1] >= 245 && data[index + 2] >= 245)) continue;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  if (right < left) return canvas.toDataURL("image/png");
+  const padding = Math.max(1, Math.round(Math.max(right - left + 1, bottom - top + 1) * 0.01));
+  left = Math.max(0, left - padding);
+  top = Math.max(0, top - padding);
+  right = Math.min(canvas.width - 1, right + padding);
+  bottom = Math.min(canvas.height - 1, bottom + padding);
+  const cropped = document.createElement("canvas");
+  cropped.width = right - left + 1;
+  cropped.height = bottom - top + 1;
+  const croppedContext = cropped.getContext("2d");
+  if (!croppedContext) throw new Error("Could not crop logo.");
+  croppedContext.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
+  return cropped.toDataURL("image/png");
+}
+
+async function renderPaymentQr(payload: string, width: number, logo = "", margin = 4): Promise<string> {
+  const qr = await QRCode.toDataURL(payload, { width, margin, errorCorrectionLevel: logo ? "H" : "M" });
+  if (!logo) return qr;
+  const [qrImage, logoImage] = await Promise.all([loadImage(qr), loadImage(logo)]);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = width;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create logo QR.");
+  context.drawImage(qrImage, 0, 0, width, width);
+  const paddingRatio = 0.015;
+  const padding = width * paddingRatio;
+  const aspectRatio = logoImage.naturalWidth / logoImage.naturalHeight;
+  // Spend the same covered-area budget on wider/taller logos, not a fixed square.
+  const areaBudget = 0.22 ** 2;
+  const heightBudget = (Math.sqrt(paddingRatio ** 2 * (aspectRatio - 1) ** 2 + aspectRatio * areaBudget) - paddingRatio * (aspectRatio + 1)) / aspectRatio;
+  const scale = Math.min(width * 0.32 / logoImage.naturalWidth, width * 0.32 / logoImage.naturalHeight, width * heightBudget / logoImage.naturalHeight);
+  const logoWidth = logoImage.naturalWidth * scale;
+  const logoHeight = logoImage.naturalHeight * scale;
+  const backingWidth = logoWidth + padding * 2;
+  const backingHeight = logoHeight + padding * 2;
+  const cornerRadius = Math.min(backingWidth, backingHeight) * 0.18;
+  context.fillStyle = "#ffffff";
+  context.beginPath();
+  context.roundRect((width - backingWidth) / 2, (width - backingHeight) / 2, backingWidth, backingHeight, cornerRadius);
+  context.fill();
+  context.save();
+  context.clip();
+  context.drawImage(logoImage, (width - logoWidth) / 2, (width - logoHeight) / 2, logoWidth, logoHeight);
+  context.restore();
+  return canvas.toDataURL("image/png");
+}
+
 function templateDimensions(templateId: QrExportTemplateId) {
   return templateId.startsWith("bimpay-landscape") ? { width: 1701, height: 1134 } : { width: 1134, height: 1701 };
 }
@@ -237,6 +306,7 @@ async function renderQrTemplatePng({
   fixedPrice = "",
   outputSize = "original",
   qrPayload = "",
+  logo = "",
 }: {
   templateId: QrExportTemplateId;
   qr: string;
@@ -251,6 +321,7 @@ async function renderQrTemplatePng({
   fixedPrice?: string;
   outputSize?: QrOutputSize;
   qrPayload?: string;
+  logo?: string;
 }): Promise<string> {
   const { width, height } = templateDimensions(templateId);
   const output = outputDimensions(templateId, outputSize);
@@ -266,9 +337,7 @@ async function renderQrTemplatePng({
   const textWidth = landscape ? 700 : 780;
   const qrSize = landscape ? 580 : 720;
   const exportScale = Math.min(output.width / width, output.height / height);
-  const qrImage = await loadImage(qrPayload ? await QRCode.toDataURL(qrPayload, {
-    width: Math.ceil(qrSize * exportScale), margin: 4, errorCorrectionLevel: "M",
-  }) : qr);
+  const qrImage = await loadImage(qrPayload ? await renderPaymentQr(qrPayload, Math.ceil(qrSize * exportScale), logo) : qr);
   const canvas = document.createElement("canvas");
   canvas.width = output.width;
   canvas.height = output.height;
@@ -356,10 +425,13 @@ async function renderQrTemplatePng({
       // Centre the entire description/price block within the artwork's header.
       const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
       const gap = lines.length ? 40 : 0;
-      const top = (landscape ? 438 : 312) - (descriptionHeight + gap + 80) / 2;
-      lines.forEach((line, index) => context.fillText(line, textCenter, top + 28 + index * 68));
+      const top = (landscape ? 438 : 312) - (56 + 20 + descriptionHeight + gap + 80) / 2;
+      context.font = `700 56px ${exportFont}`;
+      context.fillText(merchantName.trim().toUpperCase(), textCenter, top + 28, textWidth);
+      context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
+      lines.forEach((line, index) => context.fillText(line, textCenter, top + 76 + 28 + index * 68));
       context.font = `700 80px ${exportFont}`;
-      context.fillText(fixedPrice, textCenter, top + descriptionHeight + gap + 40, textWidth);
+      context.fillText(fixedPrice, textCenter, top + 76 + descriptionHeight + gap + 40, textWidth);
       context.restore();
     }
     if (donationTemplate) {
@@ -446,6 +518,9 @@ export default function Generator() {
   const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
   const [message, setMessage] = useState("");
   const [amountMode, setAmountMode] = useState<AmountMode>("variable");
+  const [qrLogo, setQrLogo] = useState("");
+  const [logoError, setLogoError] = useState("");
+  const logoFileInput = useRef<HTMLInputElement>(null);
   const [advancedMode, setAdvancedMode] = useState(false);
   const [institutionBic, setInstitutionBic] = useState("");
   const [branchIndex, setBranchIndex] = useState("");
@@ -558,11 +633,7 @@ export default function Generator() {
 
       setMessage("Generating QR codes...");
 
-      const rawQrDataUrl = await QRCode.toDataURL(payloadForGeneration, {
-        errorCorrectionLevel: "M",
-        margin: 2,
-        width: 380,
-      });
+      const rawQrDataUrl = await renderPaymentQr(payloadForGeneration, 380, qrLogo, 4);
 
       setRawQr(rawQrDataUrl);
       setGeneratedPayload(payloadForGeneration);
@@ -627,6 +698,9 @@ export default function Generator() {
     });
 
     setAmountMode("variable");
+    setQrLogo("");
+    setLogoError("");
+    if (logoFileInput.current) logoFileInput.current.value = "";
     setAdvancedMode(false);
     setRawQr("");
     setGeneratedPayload("");
@@ -897,6 +971,35 @@ export default function Generator() {
             <TemplatePreview title="Tag 80 Template" value={privateTemplate} />
           </EditorSection>}
 
+          <EditorSection title="QR logo (optional)">
+            <input ref={logoFileInput} type="file" aria-label="Upload QR logo" className="block w-full min-w-0 text-sm text-slate-700 file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-slate-300 file:bg-slate-100 file:px-4 file:py-2 file:font-semibold file:text-slate-900 hover:file:bg-slate-200" accept="image/png,image/jpeg,image/webp" onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+                setLogoError("Choose a PNG, JPEG or WebP image under 2 MB.");
+                return;
+              }
+              try {
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(String(reader.result));
+                  reader.onerror = () => reject(new Error("Could not read this image."));
+                  reader.readAsDataURL(file);
+                });
+                setQrLogo(await prepareQrLogo(dataUrl));
+                setLogoError("");
+                setRawQr("");
+                setGeneratedPayload("");
+              } catch {
+                setLogoError("Could not load this image. Choose another file.");
+              }
+            }} />
+            {qrLogo && <div className="mt-3 flex items-center gap-3">
+              <img src={qrLogo} alt="Uploaded QR logo" className="h-16 w-16 object-contain" />
+              <button type="button" onClick={() => { setQrLogo(""); setRawQr(""); setGeneratedPayload(""); if (logoFileInput.current) logoFileInput.current.value = ""; }}>Remove logo</button>
+            </div>}
+            {logoError && <p role="alert" className="mt-2 text-sm text-red-700">{logoError}</p>}
+          </EditorSection>
           <button
             type="button"
             onClick={generateQrs}
@@ -915,6 +1018,7 @@ export default function Generator() {
 
         <section className="space-y-6">
           <QrTemplateExporter
+            logo={qrLogo}
             recipientType={technicalMode ? undefined : recipientType}
             technicalMode={technicalMode}
             fixedPrice={generatedFixedPrice}
@@ -1089,6 +1193,7 @@ function TemplatePreview({ title, value }: TemplatePreviewProps) {
 }
 
 interface QrTemplateExporterProps {
+  logo: string;
   recipientType?: RecipientType;
   technicalMode?: boolean;
   fixedPrice: string;
@@ -1104,6 +1209,7 @@ interface QrTemplateExporterProps {
 }
 
 function QrTemplateExporter({
+  logo,
   recipientType = "small-medium-business",
   technicalMode = false,
   fixedPrice,
@@ -1125,8 +1231,11 @@ function QrTemplateExporter({
   const [previewDataUrl, setPreviewDataUrl] = useState("");
   const [renderedPreviewKey, setRenderedPreviewKey] = useState("");
   const [previewMessage, setPreviewMessage] = useState("");
+  const templateId = amountMode === "fixed"
+    ? (selectedTemplateId.startsWith("bimpay-landscape") ? "bimpay-landscape-fixed" : "bimpay-fixed")
+    : selectedTemplateId.endsWith("fixed") ? (selectedTemplateId.startsWith("bimpay-landscape") ? "bimpay-landscape" : "bimpay-accepted") : selectedTemplateId;
   const selectedTemplate =
-    QR_EXPORT_TEMPLATES.find((template) => template.id === selectedTemplateId) ??
+    QR_EXPORT_TEMPLATES.find((template) => template.id === templateId) ??
     QR_EXPORT_TEMPLATES[0];
   const orientation = selectedTemplate.id.startsWith("bimpay-landscape") ? "landscape" : "portrait";
   const selectedLayout = TEMPLATE_LAYOUTS.find((layout) => layout.portrait === selectedTemplate.id || layout.landscape === selectedTemplate.id) ?? TEMPLATE_LAYOUTS[0];
@@ -1141,7 +1250,7 @@ function QrTemplateExporter({
   const descriptionError = selectedTemplate.id.endsWith("fixed") && fixedDescription.length > 30
     ? `Description is ${fixedDescription.length} characters. Remove ${fixedDescription.length - 30} to fit the 30-character limit (including spaces).`
     : "";
-  const previewKey = JSON.stringify([selectedSource.value, selectedTemplate.id, outputSize, donationCause, fixedDescription, fixedPrice, amount, amountMode, merchantCity, merchantName, reference]);
+  const previewKey = JSON.stringify([selectedSource.value, selectedTemplate.id, outputSize, donationCause, fixedDescription, fixedPrice, amount, amountMode, merchantCity, merchantName, reference, logo]);
   const previewIsCurrent = renderedPreviewKey === previewKey;
   const activePreviewDataUrl = selectedSource.qr && !descriptionError && previewIsCurrent ? previewDataUrl : "";
   const previewPlaceholder = descriptionError || (!selectedSource.qr
@@ -1167,6 +1276,7 @@ function QrTemplateExporter({
       fixedPrice,
       outputSize,
       qrPayload: source.value,
+      logo,
     });
   }
 
@@ -1193,6 +1303,7 @@ function QrTemplateExporter({
       fixedPrice,
       outputSize,
       qrPayload: selectedSource.value,
+      logo,
     })
       .then((dataUrl) => {
         if (cancelled) return;
@@ -1212,6 +1323,7 @@ function QrTemplateExporter({
     };
   }, [
     previewKey,
+    logo,
     outputSize,
     selectedSource.value,
     fixedDescription,
@@ -1312,12 +1424,13 @@ function QrTemplateExporter({
           <select
             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm"
             value={selectedLayout.portrait}
+            disabled={amountMode === "fixed"}
             onChange={(event) => {
               const layout = TEMPLATE_LAYOUTS.find((item) => item.portrait === event.target.value);
               if (layout) onTemplateChange(layout[orientation]);
             }}
           >
-            {TEMPLATE_LAYOUTS.map((layout) => <option key={layout.portrait} value={layout.portrait}>{layout.label}</option>)}
+            {TEMPLATE_LAYOUTS.filter((layout) => amountMode === "fixed" ? layout.portrait === "bimpay-fixed" : layout.portrait !== "bimpay-fixed").map((layout) => <option key={layout.portrait} value={layout.portrait}>{layout.label}</option>)}
           </select>
         </label>
         <fieldset className="min-w-0">
