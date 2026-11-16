@@ -857,7 +857,7 @@ export default function Generator() {
             onClick={generateQrs}
             className="w-full rounded-lg bg-cyan-950 px-5 py-4 text-sm font-black text-white shadow-lg transition hover:bg-slate-800"
           >
-            {technicalMode ? "Generate QR Codes" : "Create payment QR"}
+            {technicalMode ? "Generate QR Codes" : "Create Payment QR"}
           </button>
 
           {message && (
