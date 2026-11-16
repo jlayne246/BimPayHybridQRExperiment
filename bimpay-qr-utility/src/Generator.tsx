@@ -125,10 +125,10 @@ const QR_EXPORT_TEMPLATES: QrExportTemplate[] = [
 ];
 
 const TEMPLATE_LAYOUTS = [
-  { label: "Accepted Here", portrait: "bimpay-accepted", landscape: "bimpay-landscape" },
-  { label: "Merchant Name", portrait: "bimpay-merchant", landscape: "bimpay-landscape-merchant" },
-  { label: "Donations", portrait: "bimpay-donations", landscape: "bimpay-landscape-donations" },
-  { label: "Fixed Price", portrait: "bimpay-fixed", landscape: "bimpay-landscape-fixed" },
+  { label: "BiMPay Accepted Here Template", portrait: "bimpay-accepted", landscape: "bimpay-landscape" },
+  { label: "[Name] Accepts QR Payments Template", portrait: "bimpay-merchant", landscape: "bimpay-landscape-merchant" },
+  { label: "Donations QR Template", portrait: "bimpay-donations", landscape: "bimpay-landscape-donations" },
+  { label: "Fixed Price QR Template", portrait: "bimpay-fixed", landscape: "bimpay-landscape-fixed" },
 ] as const;
 
 function tlv(tag: string, value: string): string {
