@@ -6,6 +6,12 @@ const BIMPAY_SCHEME = "QRBB";
 import { MERCHANT_CATEGORY_OPTIONS } from "./data/merchantCategories";
 import { TRANSIT_DIRECTORY } from "./data/branchTransitCodes";
 
+const SORTED_MERCHANT_CATEGORY_OPTIONS = [...MERCHANT_CATEGORY_OPTIONS].sort((a, b) => {
+  if (a.value === "0000") return -1;
+  if (b.value === "0000") return 1;
+  return a.label.replace(/^\d{4}\s*-\s*/, "").localeCompare(b.label.replace(/^\d{4}\s*-\s*/, ""), "en");
+});
+
 type AmountMode = "variable" | "fixed";
 type RecipientType = "large-business" | "small-medium-business" | "microbusiness" | "organisation";
 const RECIPIENT_TYPES = [
@@ -417,7 +423,7 @@ export default function Generator() {
       optionalTlv("02", merchantAccountFields.branchAlias),
       optionalTlv("03", merchantAccountFields.accountReference),
       optionalTlv("04", merchantAccountFields.participantCode),
-      optionalTlv("10", merchantAccountFields.scheme),
+      optionalTlv("11", merchantAccountFields.scheme),
     ].join("");
   }, [merchantAccountFields]);
 
@@ -696,13 +702,13 @@ export default function Generator() {
                 </>
               )}
 
-              {technicalMode ? <Field label="52 Merchant Category Code" value={coreFields.merchantCategoryCode} onChange={(value) => updateCore("merchantCategoryCode", value)} /> : <SelectField
+              <SelectField
                 label={technicalMode ? "52 Merchant Category Code" : organisation ? "Organisation category" : microBusiness ? "Activity / payment category" : "Business category"}
                 value={coreFields.merchantCategoryCode}
                 onChange={(value) => updateCore("merchantCategoryCode", value)}
-                options={technicalMode ? MERCHANT_CATEGORY_OPTIONS : MERCHANT_CATEGORY_OPTIONS.map((option) => ({ ...option, label: option.value === "0000" ? "Other / not specified" : option.label.replace(/^\d{4}\s*-\s*/, "") }))}
+                options={technicalMode ? SORTED_MERCHANT_CATEGORY_OPTIONS : SORTED_MERCHANT_CATEGORY_OPTIONS.map((option) => ({ ...option, label: option.value === "0000" ? "Other / not specified" : option.label.replace(/^\d{4}\s*-\s*/, "") }))}
                 helper={technicalMode ? "Common MCC presets for transport, retail, food, government, and test flows." : undefined}
-              />}
+              />
               {technicalMode ? <Field label="53 Currency" value={coreFields.currency} onChange={(value) => updateCore("currency", value)} helper="ISO 4217 numeric currency code. 052 = BBD." /> : <SelectField
                 label={technicalMode ? "53 Currency" : "Currency"}
                 value={coreFields.currency}
@@ -792,7 +798,7 @@ export default function Generator() {
                 onChange={(value) => updateMerchant("participantCode", value)}
               />
 
-              {advancedMode && <ReadOnlyField label="26.10 Scheme" value={merchantAccountFields.scheme} />}
+              {advancedMode && <ReadOnlyField label="26.11 Scheme" value={merchantAccountFields.scheme} />}
             </div>}
 
             {technicalMode && <TemplatePreview title="Tag 26 Template" value={merchantAccountTemplate} />}
@@ -932,18 +938,20 @@ export default function Generator() {
 interface FieldProps {
   label: string;
   value: string;
+  placeholder?: string;
   helper?: string;
   maxLength?: number;
   onChange: (value: string) => void;
 }
 
-function Field({ label, value, helper, maxLength, onChange }: FieldProps) {
+function Field({ label, value, placeholder, helper, maxLength, onChange }: FieldProps) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
       <input
         className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-200"
         value={value}
+        placeholder={placeholder}
         maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
       />
