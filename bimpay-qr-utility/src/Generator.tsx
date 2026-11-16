@@ -1276,8 +1276,8 @@ function QrTemplateExporter({
               </div>
               <div className="mt-3 text-xs leading-5 text-slate-500">
                 {generatedSources.length
-                  ? `${generatedSources.length} generated QR source${generatedSources.length === 1 ? "" : "s"} available for template export.`
-                  : "Generate QR codes to enable template export."}
+                  ? `${generatedSources.length} generated QR source${generatedSources.length === 1 ? "" : "s"} available for export.`
+                  : "Generate QR codes to enable export."}
               </div>
             </div>
           </div>
@@ -1287,7 +1287,7 @@ function QrTemplateExporter({
       <div className="mt-5 rounded-lg border border-slate-200 bg-slate-100 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-black text-slate-950">Template preview</div>
+            <div className="text-sm font-black text-slate-950">PrintableQR preview</div>
             <div className="text-xs font-semibold text-slate-500">
               Matches the exported PNG and PDF for the selected layout and size.
             </div>
@@ -1325,7 +1325,7 @@ function QrTemplateExporter({
           disabled={!selectedSource.qr || Boolean(descriptionError)}
           className="rounded-lg bg-cyan-950 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          Download Template PNG
+          Download as PNG
         </button>
         <button
           type="button"
@@ -1333,7 +1333,7 @@ function QrTemplateExporter({
           disabled={!selectedSource.qr || Boolean(descriptionError) || exportingPdf}
           className="rounded-lg border border-cyan-950 bg-white px-4 py-3 text-sm font-black text-cyan-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
         >
-          {exportingPdf ? "Preparing PDF..." : "Download Template PDF"}
+          {exportingPdf ? "Preparing PDF..." : "Download as PDF"}
         </button>
         <button
           type="button"
@@ -1341,7 +1341,7 @@ function QrTemplateExporter({
           disabled={!selectedSource.qr || Boolean(descriptionError)}
           className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
         >
-          Share Template
+          Share Prinable QR Code
         </button>
       </div>
 
