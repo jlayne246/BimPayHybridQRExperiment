@@ -20,7 +20,7 @@ const RECIPIENT_TYPES = [
   { value: "organisation", label: "Charity / non-profit / social organisation" },
   { value: "microbusiness", label: "Individual / microbusiness" },
 ];
-type QrExportTemplateId = "bimpay-accepted" | "bimpay-donations" | "bimpay-fixed" | "bimpay-landscape" | "bimpay-landscape-donations" | "bimpay-landscape-fixed";
+type QrExportTemplateId = "bimpay-accepted" | "bimpay-donations" | "bimpay-fixed" | "bimpay-landscape" | "bimpay-landscape-donations" | "bimpay-landscape-fixed" | "bimpay-merchant" | "bimpay-landscape-merchant";
 type QrExportSourceId = "raw";
 type QrOutputSize = "original" | "a5" | "a4";
 const QR_OUTPUT_SIZES = {
@@ -113,6 +113,8 @@ const CURRENCY_OPTIONS = [
 const EMPTY_ACCOUNT_REFERENCE = "";
 
 const QR_EXPORT_TEMPLATES: QrExportTemplate[] = [
+  { id: "bimpay-merchant", title: "BiMPay Merchant Name", description: "Accepted QR payments sign with the merchant name.", sizeLabel: "1134 x 1701 PNG" },
+  { id: "bimpay-landscape-merchant", title: "BiMPay Landscape Merchant Name", description: "Landscape accepted QR payments sign with the merchant name.", sizeLabel: "1701 x 1134 PNG" },
   { id: "bimpay-landscape-donations", title: "BiMPay Landscape Donations", description: "Landscape donation sign with a custom cause.", sizeLabel: "1701 x 1134 PNG" },
   { id: "bimpay-landscape-fixed", title: "BiMPay Landscape Fixed Price", description: "Landscape sign with a description and price.", sizeLabel: "1701 x 1134 PNG" },
   { id: "bimpay-landscape", title: "BiMPay Landscape", description: "Accepted-here counter sign in landscape format.", sizeLabel: "1701 x 1134 PNG" },
@@ -124,6 +126,7 @@ const QR_EXPORT_TEMPLATES: QrExportTemplate[] = [
 
 const TEMPLATE_LAYOUTS = [
   { label: "Accepted Here", portrait: "bimpay-accepted", landscape: "bimpay-landscape" },
+  { label: "Merchant Name", portrait: "bimpay-merchant", landscape: "bimpay-landscape-merchant" },
   { label: "Donations", portrait: "bimpay-donations", landscape: "bimpay-landscape-donations" },
   { label: "Fixed Price", portrait: "bimpay-fixed", landscape: "bimpay-landscape-fixed" },
 ] as const;
@@ -228,6 +231,7 @@ function outputDimensions(templateId: QrExportTemplateId, size: QrOutputSize) {
 async function renderQrTemplatePng({
   templateId,
   qr,
+  merchantName,
   donationCause = "",
   fixedDescription = "",
   fixedPrice = "",
@@ -253,9 +257,10 @@ async function renderQrTemplatePng({
   const landscape = templateId.startsWith("bimpay-landscape");
   const fixedTemplate = templateId.endsWith("fixed");
   const donationTemplate = templateId.endsWith("donations");
+  const merchantTemplate = templateId.endsWith("merchant");
   const exportFont = landscape ? "Arial" : '"Montserrat Variable"';
-  if (!landscape && (fixedTemplate || donationTemplate)) {
-    await document.fonts.load(`700 80px ${exportFont}`);
+  if (merchantTemplate || (!landscape && (fixedTemplate || donationTemplate))) {
+    await document.fonts.load(`700 80px "Montserrat Variable"`);
   }
   const textCenter = landscape ? 453 : width / 2;
   const textWidth = landscape ? 700 : 780;
@@ -291,6 +296,29 @@ async function renderQrTemplatePng({
       context.fillStyle = "#ffffff";
       context.fillRect(113, 510, 908, 778);
       context.drawImage(qrImage, 207, 539, qrSize, qrSize);
+    }
+    if (merchantTemplate) {
+      context.save();
+      context.fillStyle = "#0114a8";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      const name = merchantName.trim().toUpperCase();
+      const maxWidth = landscape ? 700 : 780;
+      const centerX = landscape ? 497 : width / 2;
+      const centerY = landscape ? 340 : 280;
+      context.font = '700 80px "Montserrat Variable"';
+      let lines = [name];
+      if (context.measureText(name).width > maxWidth) {
+        const spaces = Array.from(name.matchAll(/\s+/g), (match) => match.index);
+        const breaks = spaces.length ? spaces : Array.from({ length: name.length - 1 }, (_, index) => index + 1);
+        const widest = (index: number) => Math.max(context.measureText(name.slice(0, index).trim()).width, context.measureText(name.slice(index).trim()).width);
+        const split = breaks.reduce((best, index) => widest(index) < widest(best) ? index : best, breaks[0]);
+        lines = [name.slice(0, split).trim(), name.slice(split).trim()];
+      }
+      const widestLine = Math.max(maxWidth, ...lines.map((line) => context.measureText(line).width));
+      context.font = `700 ${80 * maxWidth / widestLine}px "Montserrat Variable"`;
+      lines.forEach((line, index) => context.fillText(line, centerX, centerY + (index - (lines.length - 1) / 2) * 96));
+      context.restore();
     }
     if (fixedTemplate) {
       context.save();
