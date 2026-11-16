@@ -425,13 +425,13 @@ async function renderQrTemplatePng({
       // Centre the entire description/price block within the artwork's header.
       const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
       const gap = lines.length ? 40 : 0;
-      const top = (landscape ? 438 : 312) - (56 + 20 + descriptionHeight + gap + 80) / 2;
-      context.font = `700 56px ${exportFont}`;
-      context.fillText(merchantName.trim().toUpperCase(), textCenter, top + 28, textWidth);
+      const top = (landscape ? 438 : 312) - (64 + 20 + descriptionHeight + gap + 80) / 2;
+      context.font = `700 64px ${exportFont}`;
+      context.fillText(merchantName.trim().toUpperCase(), textCenter, top + 32, textWidth);
       context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
-      lines.forEach((line, index) => context.fillText(line, textCenter, top + 76 + 28 + index * 68));
+      lines.forEach((line, index) => context.fillText(line, textCenter, top + 84 + 28 + index * 68));
       context.font = `700 80px ${exportFont}`;
-      context.fillText(fixedPrice, textCenter, top + 76 + descriptionHeight + gap + 40, textWidth);
+      context.fillText(fixedPrice, textCenter, top + 84 + descriptionHeight + gap + 40, textWidth);
       context.restore();
     }
     if (donationTemplate) {
