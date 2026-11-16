@@ -1287,7 +1287,7 @@ function QrTemplateExporter({
       <div className="mt-5 rounded-lg border border-slate-200 bg-slate-100 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-black text-slate-950">PrintableQR preview</div>
+            <div className="text-sm font-black text-slate-950">Printable QR preview</div>
             <div className="text-xs font-semibold text-slate-500">
               Matches the exported PNG and PDF for the selected layout and size.
             </div>
