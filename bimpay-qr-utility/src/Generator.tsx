@@ -7,6 +7,13 @@ import { MERCHANT_CATEGORY_OPTIONS } from "./data/merchantCategories";
 import { TRANSIT_DIRECTORY } from "./data/branchTransitCodes";
 
 type AmountMode = "variable" | "fixed";
+type RecipientType = "large-business" | "small-medium-business" | "microbusiness" | "organisation";
+const RECIPIENT_TYPES = [
+  { value: "small-medium-business", label: "Small / medium business" },
+  { value: "large-business", label: "Large business" },
+  { value: "organisation", label: "Charity / non-profit / social organisation" },
+  { value: "microbusiness", label: "Individual / microbusiness" },
+];
 type QrExportTemplateId = "bimpay-accepted" | "bimpay-donations" | "bimpay-fixed" | "bimpay-landscape" | "bimpay-landscape-donations" | "bimpay-landscape-fixed";
 type QrExportSourceId = "raw";
 type QrOutputSize = "original" | "a5" | "a4";
@@ -342,6 +349,16 @@ async function renderQrTemplatePng({
 }
 
 export default function Generator() {
+  const [recipientType, setRecipientType] = useState<RecipientType>("small-medium-business");
+  const microBusiness = recipientType === "microbusiness";
+  const organisation = recipientType === "organisation";
+  const largeBusiness = recipientType === "large-business";
+  const [technicalMode, setTechnicalMode] = useState(() => window.location.hash === "#/customise");
+  useEffect(() => {
+    const onRouteChange = () => setTechnicalMode(window.location.hash === "#/customise");
+    window.addEventListener("hashchange", onRouteChange);
+    return () => window.removeEventListener("hashchange", onRouteChange);
+  }, []);
   const [coreFields, setCoreFields] = useState<CoreFields>({
     payloadFormat: "01",
     initiationMethod: "11",
@@ -350,7 +367,7 @@ export default function Generator() {
     amount: "3.50",
     country: "BB",
     merchantName: "",
-    merchantCity: "",
+    merchantCity: "BRIDGETOWN",
   });
 
   const [merchantAccountFields, setMerchantAccountFields] =
@@ -405,17 +422,19 @@ export default function Generator() {
   }, [merchantAccountFields]);
 
   const additionalDataTemplate = useMemo(() => {
+    const fullDetails = technicalMode || recipientType === "large-business";
+    const businessDetails = fullDetails || recipientType === "small-medium-business" || recipientType === "microbusiness";
     return [
-      optionalTlv("01", additionalDataFields.billNumber),
-      optionalTlv("02", additionalDataFields.mobileNumber),
-      optionalTlv("03", additionalDataFields.storeLabel),
-      optionalTlv("04", additionalDataFields.loyaltyNumber),
+      optionalTlv("01", businessDetails ? additionalDataFields.billNumber : ""),
+      optionalTlv("02", fullDetails ? additionalDataFields.mobileNumber : ""),
+      optionalTlv("03", fullDetails ? additionalDataFields.storeLabel : ""),
+      optionalTlv("04", fullDetails ? additionalDataFields.loyaltyNumber : ""),
       optionalTlv("05", additionalDataFields.referenceLabel),
-      optionalTlv("06", additionalDataFields.customerLabel),
-      optionalTlv("07", additionalDataFields.terminalLabel),
+      optionalTlv("06", fullDetails ? additionalDataFields.customerLabel : ""),
+      optionalTlv("07", fullDetails ? additionalDataFields.terminalLabel : ""),
       optionalTlv("08", additionalDataFields.purpose),
     ].join("");
-  }, [additionalDataFields]);
+  }, [additionalDataFields, recipientType, technicalMode]);
 
   const privateTemplate = useMemo(() => {
     return [
@@ -452,7 +471,7 @@ export default function Generator() {
     },
   ];
 
-  function updateCore<K extends Exclude<keyof CoreFields, "payloadFormat" | "initiationMethod">>(key: K, value: CoreFields[K]): void {
+  function updateCore<K extends Exclude<keyof CoreFields, "payloadFormat" | "initiationMethod" | "merchantCity">>(key: K, value: CoreFields[K]): void {
     setCoreFields((current) => ({ ...current, [key]: value }));
   }
 
@@ -478,12 +497,12 @@ export default function Generator() {
       const payloadForGeneration = buildEmvPayload(fieldsForGeneration);
       if (!coreFields.merchantName.trim() || !coreFields.merchantCity.trim() ||
           Object.values(merchantAccountFields).some((value) => !value.trim())) {
-        setMessage("Enter a merchant name, city, and all merchant account information fields.");
+        setMessage(technicalMode ? "Enter a merchant name and all merchant account information fields." : "Enter the recipient name, choose a bank and branch, and enter the receiving account or merchant number.");
         return;
       }
 
       if (fieldsForGeneration.some((field) => field.value.trim().length > 99)) {
-        setMessage("Each TLV field must fit its two-digit length (99 characters maximum). Shorten the account or additional data fields.");
+        setMessage(technicalMode ? "Each TLV field must fit its two-digit length (99 characters maximum). Shorten the account or additional data fields." : "There is too much account or reference information for this QR. Shorten your notes or reference and try again.");
         return;
       }
 
@@ -523,6 +542,7 @@ export default function Generator() {
   }
 
   function resetToDefaults(): void {
+    setRecipientType("small-medium-business");
     setInstitutionBic("");
     setBranchIndex("");
     setCoreFields({
@@ -533,7 +553,7 @@ export default function Generator() {
       amount: "3.50",
       country: "BB",
       merchantName: "",
-      merchantCity: "",
+      merchantCity: "BRIDGETOWN",
     });
 
     setMerchantAccountFields({
@@ -579,11 +599,15 @@ export default function Generator() {
               <span>QR Utility</span>
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-              Build EMVCo-style QR payloads with your merchant and routing details.
+              {technicalMode ? "Customise and inspect payment QR fields." : "Create a payment QR for your business, fundraiser or event."}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <a href={technicalMode ? "#/" : "#/customise"} className="rounded-lg border border-cyan-950/20 bg-white px-4 py-3 text-sm font-bold text-cyan-950 transition hover:bg-slate-50">
+              {technicalMode ? "Back to QR creator" : "Experiment with QR Scheme"}
+            </a>
+            {technicalMode && (
             <button
               type="button"
               onClick={() => setAdvancedMode((current) => !current)}
@@ -591,6 +615,7 @@ export default function Generator() {
             >
               {advancedMode ? "Hide Advanced" : "Show Advanced"}
             </button>
+            )}
 
             <button
               type="button"
@@ -607,32 +632,49 @@ export default function Generator() {
 
       <main className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="space-y-6">
+          <EditorSection title={technicalMode ? "Recipient type" : "Who is this QR for?"}>
+            <SelectField
+              label="Recipient type"
+              value={recipientType}
+              options={RECIPIENT_TYPES}
+              onChange={(value) => {
+                setRecipientType(value as RecipientType);
+                if (value === "organisation") {
+                  setExportTemplateId(exportTemplateId.startsWith("bimpay-landscape") ? "bimpay-landscape-donations" : "bimpay-donations");
+                }
+                setRawQr("");
+                setGeneratedPayload("");
+                setGeneratedFixedPrice("");
+                setMessage("");
+              }}
+            />
+          </EditorSection>
           <EditorSection
-            title="Payment Behaviour"
-            description="This separates EMVCo initiation semantics from independently observed payment-app amount behaviour."
+            title={technicalMode ? "Payment Behaviour" : "Payment amount"}
+            description={technicalMode ? "This separates EMVCo initiation semantics from independently observed payment-app amount behaviour." : undefined}
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <SelectField
-                label="Amount Mode"
+                label={technicalMode ? "Amount Mode" : organisation ? "How much will supporters give?" : "How much will customers pay?"}
                 value={amountMode}
                 onChange={(value) => setAmountMode(value as AmountMode)}
                 options={[
-                  { value: "variable", label: "Variable amount" },
-                  { value: "fixed", label: "Fixed amount" },
+                  { value: "variable", label: technicalMode ? "Variable amount" : organisation ? "Supporter enters the amount" : "Customer enters the amount" },
+                  { value: "fixed", label: technicalMode ? "Fixed amount" : organisation ? "A set amount" : "A set price" },
                 ]}
-                helper='Observed experimental behaviour: 54 = "***" may prompt for an amount.'
+                helper={technicalMode ? 'Observed experimental behaviour: 54 = "***" may prompt for an amount.' : undefined}
               />
 
               {amountMode === "fixed" && (
                 <Field
-                  label="54 Amount"
+                  label={technicalMode ? "54 Amount" : organisation ? "Amount" : "Price"}
                   value={coreFields.amount}
                   onChange={(value) => updateCore("amount", value)}
                   helper="Use a numeric value such as 3.50 or 25.00."
                 />
               )}
 
-              {amountMode === "variable" && (
+              {technicalMode && amountMode === "variable" && (
                 <ReadOnlyField
                   label="54 Transaction Amount"
                   value="***"
@@ -643,11 +685,11 @@ export default function Generator() {
           </EditorSection>
 
           <EditorSection
-            title="Core EMVCo Fields"
-            description="Top-level fields in the EMV merchant-presented QR payload."
+            title={technicalMode ? "Core EMVCo Fields" : organisation ? "Your organisation" : microBusiness ? "Your details" : "Your business"}
+            description={technicalMode ? "Top-level fields in the EMV merchant-presented QR payload." : undefined}
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {advancedMode && (
+              {technicalMode && advancedMode && (
                 <>
                   <ReadOnlyField label="00 Payload Format" value={coreFields.payloadFormat} />
                   <ReadOnlyField
@@ -659,41 +701,41 @@ export default function Generator() {
               )}
 
               <SelectField
-                label="52 Merchant Category Code"
+                label={technicalMode ? "52 Merchant Category Code" : organisation ? "Organisation category" : microBusiness ? "Activity / payment category" : "Business category"}
                 value={coreFields.merchantCategoryCode}
                 onChange={(value) => updateCore("merchantCategoryCode", value)}
-                options={MERCHANT_CATEGORY_OPTIONS}
-                helper="Common MCC presets for transport, retail, food, government, and test flows."
+                options={technicalMode ? MERCHANT_CATEGORY_OPTIONS : MERCHANT_CATEGORY_OPTIONS.map((option) => ({ ...option, label: option.value === "0000" ? "Other / not specified" : option.label.replace(/^\d{4}\s*-\s*/, "") }))}
+                helper={technicalMode ? "Common MCC presets for transport, retail, food, government, and test flows." : undefined}
               />
               <SelectField
-                label="53 Currency"
+                label={technicalMode ? "53 Currency" : "Currency"}
                 value={coreFields.currency}
                 onChange={(value) => updateCore("currency", value)}
-                options={CURRENCY_OPTIONS}
-                helper="ISO 4217 numeric currency code. 052 = BBD."
+                options={technicalMode ? CURRENCY_OPTIONS : CURRENCY_OPTIONS.map((option) => ({ ...option, label: option.label.replace(/^\d{3}\s*\u2014\s*/, "") }))}
+                helper={technicalMode ? "ISO 4217 numeric currency code. 052 = BBD." : undefined}
               />
               <SelectField
-                label="58 Country"
+                label={technicalMode ? "58 Country" : "Country"}
                 value={coreFields.country}
                 onChange={(value) => updateCore("country", value)}
                 options={COUNTRY_OPTIONS}
-                helper="ISO 3166-1 alpha-2 country code."
+                helper={technicalMode ? "ISO 3166-1 alpha-2 country code." : undefined}
               />
-              <Field label="59 Merchant Name" value={coreFields.merchantName} onChange={(value) => updateCore("merchantName", value)} helper="Truncated to 25 chars" />
-              <Field label="60 Merchant City" value={coreFields.merchantCity} onChange={(value) => updateCore("merchantCity", value)} helper="Truncated to 15 chars" />
+              <Field label={technicalMode ? "59 Merchant Name" : organisation ? "Organisation name" : microBusiness ? "Name / trading name" : "Business name"} value={coreFields.merchantName} onChange={(value) => updateCore("merchantName", value)} helper="Up to 25 characters in the payment QR." maxLength={25} />
+              {technicalMode && <ReadOnlyField label="60 Merchant City" value={coreFields.merchantCity} />}
             </div>
           </EditorSection>
 
           <EditorSection
-            title="Tag 26 — Merchant Account Information"
-            description="Guided abstraction over scheme-specific merchant account/routing data."
+            title={technicalMode ? "Tag 26 — Merchant Account Information" : "Where payments go"}
+            description={technicalMode ? "Guided abstraction over scheme-specific merchant account/routing data." : undefined}
           >
             <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
               <SelectField
-                label="Financial institution"
+                label={technicalMode ? "Financial institution" : "Bank or credit union"}
                 value={institutionBic}
                 options={[
-                  { value: "", label: "Custom / manual entry" },
+                  { value: "", label: technicalMode ? "Custom / manual entry" : "Choose your bank or credit union" },
                   ...TRANSIT_DIRECTORY.map((institution) => ({ value: institution.bic, label: institution.partyName })),
                 ]}
                 onChange={(bic) => {
@@ -703,13 +745,13 @@ export default function Generator() {
                 }}
               />
               <SelectField
-                label="Branch / service"
+                label={technicalMode ? "Branch / service" : "Branch"}
                 value={branchIndex}
                 options={[
                   { value: "", label: "Choose a branch" },
                   ...(selectedInstitution?.branches.map((branch, index) => ({
                     value: String(index),
-                    label: `${branch.addressLine1} - ${branch.transitCode}${branch.discontinued ? " (discontinued)" : ""}`,
+                    label: `${branch.addressLine1}${technicalMode ? ` - ${branch.transitCode}` : ""}${branch.discontinued ? " (discontinued)" : ""}`,
                     disabled: branch.discontinued,
                   })) ?? []),
                 ]}
@@ -724,9 +766,10 @@ export default function Generator() {
                 }}
               />
             </div>
-            <p className="mb-4 text-xs text-slate-500">Branch directory: May 2026. Presets use Head Office BIC for 26.01/26.02 and Transit Code for 26.04. Codes remain editable.</p>
+            {technicalMode && <p className="mb-4 text-xs text-slate-500">Branch directory: May 2026. Presets use Head Office BIC for 26.01/26.02 and Transit Code for 26.04. Codes remain editable.</p>}
             {branchIndex !== "" && selectedBranch?.note && <p className="mb-4 text-sm text-slate-600">{selectedBranch.note}</p>}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {!technicalMode && <Field label={organisation ? "Organisation account number" : microBusiness ? "Receiving account number" : "Account / merchant number"} value={merchantAccountFields.accountReference} onChange={(value) => updateMerchant("accountReference", value)} />}
+            {technicalMode && <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {advancedMode && <ReadOnlyField label="26.00 GUI" value={merchantAccountFields.gui} />}
 
               <Field
@@ -754,18 +797,30 @@ export default function Generator() {
               />
 
               {advancedMode && <ReadOnlyField label="26.10 Scheme" value={merchantAccountFields.scheme} />}
-            </div>
+            </div>}
 
-            <TemplatePreview title="Tag 26 Template" value={merchantAccountTemplate} />
+            {technicalMode && <TemplatePreview title="Tag 26 Template" value={merchantAccountTemplate} />}
           </EditorSection>
 
           <EditorSection
-            title="Tag 62 — Additional Data"
-            description="Optional nested labels for reference, bill number, terminal, purpose, or related metadata."
+            title={technicalMode ? "Tag 62 — Additional Data" : organisation ? "Purpose & reference (optional)" : largeBusiness ? "Business payment details (optional)" : "Bill details & notes (optional)"}
+            description={technicalMode ? "Optional nested labels for reference, bill number, terminal, purpose, or related metadata." : undefined}
+            collapsible={!technicalMode}
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {!technicalMode && <>
+                {!organisation && <Field label="Bill / invoice number" value={additionalDataFields.billNumber} onChange={(value) => updateAdditional("billNumber", value)} />}
+                <Field label="Payment reference" value={additionalDataFields.referenceLabel} onChange={(value) => updateAdditional("referenceLabel", value)} />
+                {largeBusiness && <>
+                  <Field label="Business contact number" value={additionalDataFields.mobileNumber} onChange={(value) => updateAdditional("mobileNumber", value)} />
+                  <Field label="Store / location reference" value={additionalDataFields.storeLabel} onChange={(value) => updateAdditional("storeLabel", value)} />
+                  <Field label="Loyalty reference" value={additionalDataFields.loyaltyNumber} onChange={(value) => updateAdditional("loyaltyNumber", value)} />
+                  <Field label="Customer reference" value={additionalDataFields.customerLabel} onChange={(value) => updateAdditional("customerLabel", value)} />
+                  <Field label="Till / terminal reference" value={additionalDataFields.terminalLabel} onChange={(value) => updateAdditional("terminalLabel", value)} />
+                </>}
+              </>}
               <label className="block md:col-span-2">
-                <span className="mb-2 block text-sm font-semibold text-slate-700">62.08 Purpose / Notes</span>
+                <span className="mb-2 block text-sm font-semibold text-slate-700">{technicalMode ? "62.08 Purpose / Notes" : "Purpose / notes (optional)"}</span>
                 <textarea
                   className="w-full resize-y rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-200"
                   rows={4}
@@ -773,7 +828,7 @@ export default function Generator() {
                   onChange={(event) => updateAdditional("purpose", event.target.value)}
                 />
               </label>
-              {advancedMode && (
+              {technicalMode && advancedMode && (
                 <>
                   <Field label="62.01 Bill Number" value={additionalDataFields.billNumber} onChange={(value) => updateAdditional("billNumber", value)} />
                   <Field label="62.02 Mobile Number" value={additionalDataFields.mobileNumber} onChange={(value) => updateAdditional("mobileNumber", value)} />
@@ -786,10 +841,10 @@ export default function Generator() {
               )}
             </div>
 
-            <TemplatePreview title="Tag 62 Template" value={additionalDataTemplate || "No additional data fields set."} />
+            {technicalMode && <TemplatePreview title="Tag 62 Template" value={additionalDataTemplate || "No additional data fields set."} />}
           </EditorSection>
 
-          <EditorSection
+          {technicalMode && <EditorSection
             title="Tag 80 — Private Template"
             description="Optional private metadata fields."
           >
@@ -799,14 +854,14 @@ export default function Generator() {
             </div>
 
             <TemplatePreview title="Tag 80 Template" value={privateTemplate} />
-          </EditorSection>
+          </EditorSection>}
 
           <button
             type="button"
             onClick={generateQrs}
             className="w-full rounded-lg bg-cyan-950 px-5 py-4 text-sm font-black text-white shadow-lg transition hover:bg-slate-800"
           >
-            Generate QR Codes
+            {technicalMode ? "Generate QR Codes" : "Create payment QR"}
           </button>
 
           {message && (
@@ -819,6 +874,8 @@ export default function Generator() {
 
         <section className="space-y-6">
           <QrTemplateExporter
+            recipientType={recipientType}
+            technicalMode={technicalMode}
             fixedPrice={generatedFixedPrice}
             amount={coreFields.amount}
             amountMode={amountMode}
@@ -835,7 +892,7 @@ export default function Generator() {
             onTemplateChange={setExportTemplateId}
           />
 
-          <OutputBlock
+          {technicalMode && <><OutputBlock
             title="Raw EMV Payload"
             description="Generated merchant-presented payload."
             value={generatedPayload}
@@ -869,7 +926,7 @@ export default function Generator() {
                 </tbody>
               </table>
             </div>
-          </EditorSection>
+          </EditorSection></>}
         </section>
       </main>
     </div>
@@ -880,16 +937,18 @@ interface FieldProps {
   label: string;
   value: string;
   helper?: string;
+  maxLength?: number;
   onChange: (value: string) => void;
 }
 
-function Field({ label, value, helper, onChange }: FieldProps) {
+function Field({ label, value, helper, maxLength, onChange }: FieldProps) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
       <input
         className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-950 focus:ring-4 focus:ring-slate-200"
         value={value}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
       />
       {helper && <span className="mt-1 block text-xs text-slate-500">{helper}</span>}
@@ -949,9 +1008,18 @@ interface EditorSectionProps {
   title: string;
   description?: string;
   children: ReactNode;
+  collapsible?: boolean;
 }
 
-function EditorSection({ title, description, children }: EditorSectionProps) {
+function EditorSection({ title, description, children, collapsible = false }: EditorSectionProps) {
+  if (collapsible) {
+    return (
+      <details className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700">{title}</summary>
+        <div className="mt-5">{children}</div>
+      </details>
+    );
+  }
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-xl font-bold text-slate-950">{title}</h2>
@@ -978,6 +1046,8 @@ function TemplatePreview({ title, value }: TemplatePreviewProps) {
 }
 
 interface QrTemplateExporterProps {
+  recipientType?: RecipientType;
+  technicalMode?: boolean;
   fixedPrice: string;
   amount: string;
   amountMode: AmountMode;
@@ -991,6 +1061,8 @@ interface QrTemplateExporterProps {
 }
 
 function QrTemplateExporter({
+  recipientType = "small-medium-business",
+  technicalMode = false,
   fixedPrice,
   amount,
   amountMode,
@@ -1008,6 +1080,7 @@ function QrTemplateExporter({
   const [fixedDescription, setFixedDescription] = useState("");
   const [outputSize, setOutputSize] = useState<QrOutputSize>("a4");
   const [previewDataUrl, setPreviewDataUrl] = useState("");
+  const [renderedPreviewKey, setRenderedPreviewKey] = useState("");
   const [previewMessage, setPreviewMessage] = useState("");
   const selectedTemplate =
     QR_EXPORT_TEMPLATES.find((template) => template.id === selectedTemplateId) ??
@@ -1016,16 +1089,21 @@ function QrTemplateExporter({
   const selectedLayout = TEMPLATE_LAYOUTS.find((layout) => layout.portrait === selectedTemplate.id || layout.landscape === selectedTemplate.id) ?? TEMPLATE_LAYOUTS[0];
   const selectedSource =
     sources.find((source) => source.id === selectedSourceId) ?? sources[0];
-  const generatedSources = sources.filter((source) => source.qr);
+  const hasGeneratedQr = sources.some((source) => source.qr);
+  const selectedPaperLabel = (size: QrOutputSize) => technicalMode
+    ? outputDimensions(selectedTemplate.id, size).label
+    : `${size === "original" ? "Small sign" : size.toUpperCase()} - ${orientation === "landscape" ? "Landscape" : "Portrait"}`;
   const amountLabel =
-    amountMode === "variable" ? "Customer enters amount" : `Fixed amount BBD ${amount}`;
+    amountMode === "variable" ? `${recipientType === "organisation" ? "Supporter" : "Customer"} enters amount` : `Fixed amount BBD ${amount}`;
   const descriptionError = selectedTemplate.id.endsWith("fixed") && fixedDescription.length > 30
     ? `Description is ${fixedDescription.length} characters. Remove ${fixedDescription.length - 30} to fit the 30-character limit (including spaces).`
     : "";
-  const activePreviewDataUrl = selectedSource.qr && !descriptionError ? previewDataUrl : "";
+  const previewKey = JSON.stringify([selectedSource.value, selectedTemplate.id, outputSize, donationCause, fixedDescription, fixedPrice, amount, amountMode, merchantCity, merchantName, reference]);
+  const previewIsCurrent = renderedPreviewKey === previewKey;
+  const activePreviewDataUrl = selectedSource.qr && !descriptionError && previewIsCurrent ? previewDataUrl : "";
   const previewPlaceholder = descriptionError || (!selectedSource.qr
     ? "Generate the selected QR source to preview this template."
-    : previewMessage || "Rendering preview...");
+    : (previewIsCurrent && previewMessage) || "Rendering preview...");
 
   async function createTemplatePng(source = selectedSource): Promise<string> {
     if (!source.qr) {
@@ -1076,11 +1154,13 @@ function QrTemplateExporter({
       .then((dataUrl) => {
         if (cancelled) return;
         setPreviewDataUrl(dataUrl);
+        setRenderedPreviewKey(previewKey);
         setPreviewMessage("");
       })
       .catch((error) => {
         if (cancelled) return;
         setPreviewDataUrl("");
+        setRenderedPreviewKey(previewKey);
         setPreviewMessage(error instanceof Error ? error.message : "Could not render preview.");
       });
 
@@ -1088,6 +1168,7 @@ function QrTemplateExporter({
       cancelled = true;
     };
   }, [
+    previewKey,
     outputSize,
     selectedSource.value,
     fixedDescription,
@@ -1180,7 +1261,7 @@ function QrTemplateExporter({
 
   return (
     <EditorSection
-      title="Export Templates"
+      title={technicalMode ? "Export Templates" : "Print or share"}
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
@@ -1215,15 +1296,15 @@ function QrTemplateExporter({
       </div>
 
       <label className="mt-5 block">
-        <span className="mb-2 block text-sm font-semibold text-slate-700">Output size</span>
+        <span className="mb-2 block text-sm font-semibold text-slate-700">{technicalMode ? "Output size" : "Paper size"}</span>
         <select className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm" value={outputSize} onChange={(event) => setOutputSize(event.target.value as QrOutputSize)}>
-          {Object.keys(QR_OUTPUT_SIZES).map((value) => <option key={value} value={value}>{outputDimensions(selectedTemplate.id, value as QrOutputSize).label}</option>)}
+          {Object.keys(QR_OUTPUT_SIZES).map((value) => <option key={value} value={value}>{selectedPaperLabel(value as QrOutputSize)}</option>)}
         </select>
       </label>
 
       {selectedTemplate.id.endsWith("fixed") && (
         <label className="mt-5 block">
-          <span className="mb-2 block text-sm font-semibold text-slate-700">Item / Description</span>
+          <span className="mb-2 block text-sm font-semibold text-slate-700">{recipientType === "organisation" ? "Payment description" : "Item / Description"}</span>
           <input
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
             value={fixedDescription}
@@ -1269,15 +1350,13 @@ function QrTemplateExporter({
                 {selectedTemplate.title}
               </div>
               <div className="mt-2 text-xl font-black text-slate-950 break-words">
-                {merchantName || "TEST ONLY"}
+                {merchantName || "Your business name"}
               </div>
               <div className="mt-1 text-sm font-semibold text-slate-600">
-                {merchantCity || "SANDBOX"} / {amountLabel}
+                {amountLabel}
               </div>
               <div className="mt-3 text-xs leading-5 text-slate-500">
-                {generatedSources.length
-                  ? `${generatedSources.length} generated QR source${generatedSources.length === 1 ? "" : "s"} available for export.`
-                  : "Generate QR codes to enable export."}
+                {hasGeneratedQr ? "Your payment QR is ready." : "Create your payment QR to download or share it."}
               </div>
             </div>
           </div>
@@ -1293,7 +1372,7 @@ function QrTemplateExporter({
             </div>
           </div>
           <div className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-500">
-            {outputDimensions(selectedTemplate.id, outputSize).label}
+            {selectedPaperLabel(outputSize)}
           </div>
         </div>
 
@@ -1341,7 +1420,7 @@ function QrTemplateExporter({
           disabled={!selectedSource.qr || Boolean(descriptionError)}
           className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
         >
-          Share Prinable QR Code
+          Share printable QR
         </button>
       </div>
 

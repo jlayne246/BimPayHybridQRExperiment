@@ -21,6 +21,11 @@ Publish the contents of `dist/` on any static HTTPS host. No API, database, acco
 
 ## Behaviour
 
+- The default page uses merchant-friendly labels for business details, receiving account, payment amount, and printing/sharing. Open `#/customise` using **Customise / Experiment** for the detailed QR fields and payload inspection; **Back to QR creator** returns to the simple form. Both views share in-memory values, and hash routes work on static hosts without routing rewrites.
+- Merchant City is locked to `BRIDGETOWN` and hidden on the merchant page. Payload format, initiation method, GUI, scheme, and automatic generation timestamp remain locked in both views.
+- Recipient type controls the simplified form: Individual / microbusiness uses name/trading-name and receiving-account labels; Small / medium business (default) uses business labels; both offer optional invoice/reference/notes. Large business additionally offers contact, store, loyalty, customer, and till references. Hidden details are preserved in memory but omitted from simplified-page QR generation. Customise / Experiment exposes the full additional-data set for deliberate testing.
+- Category is selectable for all recipient types. Individual / microbusiness does not imply money transfer or force `4829`; select a category appropriate to the activity.
+- Charity / non-profit / social organisation uses organisation/supporter labels, optional purpose/reference, and defaults to the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
 - Merchant/routing fields and QR rendering run in browser memory.
 - Public Sans is bundled locally for the interface. Montserrat is bundled locally for generated portrait cause, description, and price labels to match the v2 SVG artwork; landscape labels retain Arial. Both fonts are distributed through Fontsource under the SIL Open Font License, without external font-service requests.
 - No payment payloads are sent to an API or stored in browser storage.
