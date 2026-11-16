@@ -471,7 +471,7 @@ export default function Generator() {
     },
   ];
 
-  function updateCore<K extends Exclude<keyof CoreFields, "payloadFormat" | "initiationMethod" | "merchantCity">>(key: K, value: CoreFields[K]): void {
+  function updateCore<K extends Exclude<keyof CoreFields, "payloadFormat" | "initiationMethod">>(key: K, value: CoreFields[K]): void {
     setCoreFields((current) => ({ ...current, [key]: value }));
   }
 
@@ -632,7 +632,7 @@ export default function Generator() {
 
       <main className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="space-y-6">
-          <EditorSection title={technicalMode ? "Recipient type" : "Who is this QR for?"}>
+          {!technicalMode && <EditorSection title="Who is this QR for?">
             <SelectField
               label="Recipient type"
               value={recipientType}
@@ -648,7 +648,7 @@ export default function Generator() {
                 setMessage("");
               }}
             />
-          </EditorSection>
+          </EditorSection>}
           <EditorSection
             title={technicalMode ? "Payment Behaviour" : "Payment amount"}
             description={technicalMode ? "This separates EMVCo initiation semantics from independently observed payment-app amount behaviour." : undefined}
@@ -692,37 +692,33 @@ export default function Generator() {
               {technicalMode && advancedMode && (
                 <>
                   <ReadOnlyField label="00 Payload Format" value={coreFields.payloadFormat} />
-                  <ReadOnlyField
-                    label="01 Initiation Method"
-                    value={coreFields.initiationMethod}
-                    helper="11 - Static EMVCo"
-                  />
+                  <ReadOnlyField label="01 Initiation Method" value={coreFields.initiationMethod} helper="11 - Static." />
                 </>
               )}
 
-              <SelectField
+              {technicalMode ? <Field label="52 Merchant Category Code" value={coreFields.merchantCategoryCode} onChange={(value) => updateCore("merchantCategoryCode", value)} /> : <SelectField
                 label={technicalMode ? "52 Merchant Category Code" : organisation ? "Organisation category" : microBusiness ? "Activity / payment category" : "Business category"}
                 value={coreFields.merchantCategoryCode}
                 onChange={(value) => updateCore("merchantCategoryCode", value)}
                 options={technicalMode ? MERCHANT_CATEGORY_OPTIONS : MERCHANT_CATEGORY_OPTIONS.map((option) => ({ ...option, label: option.value === "0000" ? "Other / not specified" : option.label.replace(/^\d{4}\s*-\s*/, "") }))}
                 helper={technicalMode ? "Common MCC presets for transport, retail, food, government, and test flows." : undefined}
-              />
-              <SelectField
+              />}
+              {technicalMode ? <Field label="53 Currency" value={coreFields.currency} onChange={(value) => updateCore("currency", value)} helper="ISO 4217 numeric currency code. 052 = BBD." /> : <SelectField
                 label={technicalMode ? "53 Currency" : "Currency"}
                 value={coreFields.currency}
                 onChange={(value) => updateCore("currency", value)}
                 options={technicalMode ? CURRENCY_OPTIONS : CURRENCY_OPTIONS.map((option) => ({ ...option, label: option.label.replace(/^\d{3}\s*\u2014\s*/, "") }))}
                 helper={technicalMode ? "ISO 4217 numeric currency code. 052 = BBD." : undefined}
-              />
-              <SelectField
+              />}
+              {technicalMode ? <Field label="58 Country" value={coreFields.country} onChange={(value) => updateCore("country", value)} helper="ISO 3166-1 alpha-2 country code." /> : <SelectField
                 label={technicalMode ? "58 Country" : "Country"}
                 value={coreFields.country}
                 onChange={(value) => updateCore("country", value)}
                 options={COUNTRY_OPTIONS}
                 helper={technicalMode ? "ISO 3166-1 alpha-2 country code." : undefined}
-              />
+              />}
               <Field label={technicalMode ? "59 Merchant Name" : organisation ? "Organisation name" : microBusiness ? "Name / trading name" : "Business name"} value={coreFields.merchantName} onChange={(value) => updateCore("merchantName", value)} helper="Up to 25 characters in the payment QR." maxLength={25} />
-              {technicalMode && <ReadOnlyField label="60 Merchant City" value={coreFields.merchantCity} />}
+              {technicalMode && <Field label="60 Merchant City" value={coreFields.merchantCity} onChange={(value) => updateCore("merchantCity", value)} />}
             </div>
           </EditorSection>
 
@@ -828,7 +824,7 @@ export default function Generator() {
                   onChange={(event) => updateAdditional("purpose", event.target.value)}
                 />
               </label>
-              {technicalMode && advancedMode && (
+              {technicalMode && (
                 <>
                   <Field label="62.01 Bill Number" value={additionalDataFields.billNumber} onChange={(value) => updateAdditional("billNumber", value)} />
                   <Field label="62.02 Mobile Number" value={additionalDataFields.mobileNumber} onChange={(value) => updateAdditional("mobileNumber", value)} />
@@ -874,7 +870,7 @@ export default function Generator() {
 
         <section className="space-y-6">
           <QrTemplateExporter
-            recipientType={recipientType}
+            recipientType={technicalMode ? undefined : recipientType}
             technicalMode={technicalMode}
             fixedPrice={generatedFixedPrice}
             amount={coreFields.amount}
