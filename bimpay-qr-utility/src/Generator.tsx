@@ -17,12 +17,13 @@ const SORTED_MERCHANT_CATEGORY_OPTIONS = [...MERCHANT_CATEGORY_OPTIONS].sort((a,
 });
 
 type AmountMode = "variable" | "fixed";
-type RecipientType = "large-business" | "small-medium-business" | "microbusiness" | "organisation";
+type RecipientType = "large-business" | "small-medium-business" | "microbusiness" | "organisation" | "individual-cause";
 const RECIPIENT_TYPES = [
   { value: "small-medium-business", label: "Small / medium business" },
   { value: "large-business", label: "Large business" },
   { value: "organisation", label: "Charity / non-profit / social organisation" },
   { value: "microbusiness", label: "Individual / microbusiness" },
+  { value: "individual-cause", label: "Individual cause" },
 ];
 interface QrExportSource {
   id: QrExportSourceId;
@@ -113,7 +114,7 @@ function downloadDataUrl(dataUrl: string, filename: string): void {
 
 export default function Generator() {
   const [recipientType, setRecipientType] = useState<RecipientType>("small-medium-business");
-  const microBusiness = recipientType === "microbusiness";
+  const microBusiness = recipientType === "microbusiness" || recipientType === "individual-cause";
   const organisation = recipientType === "organisation";
   const largeBusiness = recipientType === "large-business";
   const [technicalMode, setTechnicalMode] = useState(() => window.location.hash === "#/customise");
@@ -185,7 +186,7 @@ export default function Generator() {
 
   const includedAdditionalData = useMemo(() => {
     const fullDetails = technicalMode || recipientType === "large-business";
-    const businessDetails = fullDetails || recipientType === "small-medium-business" || recipientType === "microbusiness";
+    const businessDetails = fullDetails || recipientType === "small-medium-business" || recipientType === "microbusiness" || recipientType === "individual-cause";
     return {
       billNumber: businessDetails ? additionalDataFields.billNumber : "",
       mobileNumber: fullDetails ? additionalDataFields.mobileNumber : "",
