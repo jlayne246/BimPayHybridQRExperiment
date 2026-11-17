@@ -4,7 +4,7 @@ Standalone browser-only QR generator extracted from the experimental QR lab for 
 
 ## Run
 
-Use Node.js 22.12+ (or a compatible newer release).
+Use Node.js 22.12+ (or a compatible newer release). Run from the repository root.
 
 ```sh
 npm ci
@@ -14,10 +14,16 @@ npm run dev
 ## Static Hosting
 
 ```sh
-npm run build
+npm run build # from repository root
 ```
 
-Publish the contents of `dist/` on any static HTTPS host. No API, database, account, server secrets, or environment variables are required. `base: "./"` supports deployment in a subdirectory. The build can be moved into a separate repository without the parent application.
+Publish the contents of `bimpay-qr-utility/dist/` on any static HTTPS host. No API, database, account, server secrets, or environment variables are required. `base: "./"` supports deployment in a subdirectory. The built static files can be hosted independently; source builds now use the two sibling workspace packages.
+
+### Vercel
+
+For the utility's existing Vercel project, keep Root Directory set to `bimpay-qr-utility`, Build Command `npm run build`, and Output Directory `dist`. Enable **Include source files outside of the Root Directory in the Build Step** so the sibling workspace packages are available. Install dependencies using the repository's root workspace lockfile; Vercel's npm workspace detection normally handles this automatically (an explicit install command is `npm --prefix .. ci`).
+
+The utility's `prebuild` script builds both library packages before TypeScript checks or Vite run. This is required on clean deployments because package exports point to generated `dist/` JavaScript and declarations, which are not committed. Running `npm run build` from either the repository root or the utility directory now builds the packages first. The additional implicit-any errors seen when package declarations are absent are consequences of the unresolved imports.
 
 ## Behaviour
 
@@ -25,7 +31,7 @@ Publish the contents of `dist/` on any static HTTPS host. No API, database, acco
 - Merchant City is locked to `BRIDGETOWN` and hidden on the merchant page. Payload format, initiation method, GUI, scheme, and automatic generation timestamp remain locked in both views.
 - Recipient type controls the simplified form: Individual / microbusiness uses name/trading-name and receiving-account labels; Small / medium business (default) uses business labels; both offer optional invoice/reference/notes. Large business additionally offers contact, store, loyalty, customer, and till references. Hidden details are preserved in memory but omitted from simplified-page QR generation. Customise / Experiment exposes the full additional-data set for deliberate testing.
 - Category is selectable for all recipient types. Individual / microbusiness does not imply money transfer or force `4829`; select a category appropriate to the activity.
-- Charity / non-profit / social organisation uses organisation/supporter labels, optional purpose/reference, and defaults to the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
+- Charity / non-profit / social organisation / individual cause uses organisation/supporter labels, optional purpose/reference, and shows an explicit charitable-donation checkbox. Organisation identity alone does not select donation mode. Enabling donations selects the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
 - Merchant/routing fields and QR rendering run in browser memory.
 - Public Sans is bundled locally for the interface. Montserrat is bundled locally for generated portrait cause, description, and price labels to match the v2 SVG artwork; landscape labels retain Arial. Both fonts are distributed through Fontsource under the SIL Open Font License, without external font-service requests.
 - No payment payloads are sent to an API or stored in browser storage.
@@ -35,6 +41,7 @@ Publish the contents of `dist/` on any static HTTPS host. No API, database, acco
 - Directory notes and discontinued rows are retained. Discontinued rows are visible but disabled; duplicate source rows have separate selector identities. The directory is a May 2026 snapshot, not a live registry.
 - Original, A5, and A4 PNG output; print sizes preserve artwork proportions with white side margins. Print at the chosen paper size using fit-to-page. Pixel dimensions target 300 pixels per printed inch; PNG viewers may not infer paper size automatically.
 - PDF download embeds the same high-resolution artwork in a single page. A4/A5 use exact physical paper dimensions in the selected orientation; Original uses the SVG's original physical dimensions (approximately 100 x 150 mm portrait). All PDF generation runs in the browser, and the PDF library is loaded only when PDF export is requested. Print PDFs at actual size on matching paper.
+- **Print and Share** contains independently collapsible **QR Code** and **QR Payment Card** sections, initially collapsed below 768px and expanded on larger screens. The default is chosen once on initial load; resizing or generating a QR does not override the user’s open/closed choices. Select either heading (or use Enter/Space when focused) to toggle its options, preview and export controls together; collapsing preserves settings and generated outputs. The card template, orientation, paper size and optional text controls sit above the card preview. The former thumbnail/recipient summary has been removed. **Printable QR preview** appears first, above the card section, with its own **Download as PNG**, **Download as PDF**, and **Share QR** controls. PNG output is 2048 × 2048 pixels; QR-only PDFs are 100 × 100 mm square pages, including the quiet zone. Sharing uses the PNG, or downloads it when file sharing is unavailable. Select the QR to open the larger dialog, which also provides a PNG download and closes with Close or Escape. These outputs preserve the generated payload and logo. Stale payment details disable all standalone exports and close any active dialog; pending image generation, PDF and sharing work recheck validity before delivery. Flyer-only settings keep the QR valid. PDF code remains lazy-loaded.
 - Fixed-price labels are snapshots of the generated QR amount.
 - Descriptions and donation causes allow 30 characters.
 - Reloading or clearing the form removes in-memory data. Downloaded/shared files contain the encoded recipient information.
@@ -42,3 +49,31 @@ Publish the contents of `dist/` on any static HTTPS host. No API, database, acco
 The payload layout retains the prototype's `bb.org.cb.mpqr` GUI, `QRBB` scheme, observed tag-26 routing fields, and `***` variable-amount convention. Confirm these conventions and approved branding with the scheme owner before official adoption. The utility generates QR files; it does not process payments.
 
 The original application remains in `../bimpay-hybrid-qr-prototype` and is unaffected by this extraction.
+
+
+## Workspace architecture
+
+The repository root manages `packages/bimpay-qr-generator`, `packages/bimpay-payment-cards`, and this utility with npm workspaces and one root lockfile. The original `bimpay-hybrid-qr-prototype` remains outside these workspaces and is unchanged.
+
+- [QR generator](../packages/bimpay-qr-generator/README.md): pure TLV/CRC and high-level payload API; separate browser QR/logo rendering.
+- [Payment cards](../packages/bimpay-payment-cards/README.md): eight bundled SVG templates, local export fonts, Canvas PNG and lazy PDF export. Accepts an existing QR image without a QR-generator dependency.
+- This React app owns inputs, banking directory, recipient/donation choices, validation feedback, fingerprints, request IDs, preview state, downloads and sharing. It prepares print-resolution QR images before calling the card library.
+
+From the repository root:
+
+```sh
+npm ci
+npm run build # builds both packages, then the Vite utility
+npm test # Vitest package and React integration tests
+npm run test:browser # actual Chromium PNG/PDF exports
+```
+
+Browser tests default to `/usr/bin/chromium`; set `CHROMIUM_PATH` to another Chromium executable if necessary. Package builds/tests can run separately with `npm run build -w <package-name>` and `npm test -w <package-name>`. Build packages before running `npm run dev -w bimpay-qr-utility`; root `npm run dev` does that automatically. Do not run a separate `npm ci` inside the utility.
+
+Both packages are private ESM libraries with declarations and no React/Vite runtime dependency. See their READMEs for APIs, packed-archive installation in other applications, asset handling, and browser requirements. Nothing is published to npm.
+
+The stale-QR safeguard remains based on encoded payment fields, private GUI and QR logo, excluding generated timestamps and flyer-only settings. Changed payment data or logos disable stale previews/exports until regeneration. Generation request IDs prevent older completions or errors from replacing newer state; clearing the form invalidates pending requests. Async PNG/PDF/sharing work also rechecks freshness before delivering a file. Fixed-price display labels are captured with the successfully generated payload.
+
+The repository is an independently developed experimental utility. The generator is not an officially certified implementation and does not guarantee compatibility with all payment applications. The software does not execute or process payments. Official use of BiMPay branding or scheme-specific functionality may require authorisation. No institutional endorsement is claimed.
+
+See [refactor notes](../docs/PACKAGE_EXTRACTION.md) for compatibility decisions, validation and the small necessary defect fixes.

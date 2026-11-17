@@ -1,0 +1,952 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`payment-card assets and print configuration > retains fixed-donation heading and two-line wrapping: bimpay-fixed 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-fixed.svg",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    113,
+    510,
+    908,
+    778,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    207,
+    539,
+    720,
+    720,
+  ],
+  [
+    "save",
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 56px "Montserrat Variable"",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 64px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "GIVE BBD $50.00",
+    567,
+    199.5,
+    780,
+  ],
+  [
+    "font",
+    "700 48px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "TO",
+    567,
+    274.5,
+    780,
+  ],
+  [
+    "font",
+    "700 56px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "A VERY LONG",
+    567,
+    349.5,
+    780,
+  ],
+  [
+    "fillText",
+    "ORGAN APPEAL",
+    567,
+    424.5,
+    780,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains fixed-donation heading and two-line wrapping: bimpay-landscape-fixed 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-landscape-fixed.svg",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    959,
+    148,
+    580,
+    580,
+  ],
+  [
+    "save",
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 56px Arial",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 64px Arial",
+  ],
+  [
+    "fillText",
+    "GIVE BBD $50.00",
+    453,
+    325.5,
+    700,
+  ],
+  [
+    "font",
+    "700 48px Arial",
+  ],
+  [
+    "fillText",
+    "TO",
+    453,
+    400.5,
+    700,
+  ],
+  [
+    "font",
+    "700 56px Arial",
+  ],
+  [
+    "fillText",
+    "A VERY LONG",
+    453,
+    475.5,
+    700,
+  ],
+  [
+    "fillText",
+    "ORGAN APPEAL",
+    453,
+    550.5,
+    700,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-accepted 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-accepted.svg",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    113,
+    510,
+    908,
+    778,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    207,
+    539,
+    720,
+    720,
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-donations 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-donations.svg",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    113,
+    510,
+    908,
+    778,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    207,
+    539,
+    720,
+    720,
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "save",
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "ORGAN APPEAL",
+    567,
+    386,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-fixed 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-fixed.svg",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    113,
+    510,
+    908,
+    778,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    207,
+    539,
+    720,
+    720,
+  ],
+  [
+    "save",
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 56px "Montserrat Variable"",
+  ],
+  [
+    "font",
+    "700 56px "Montserrat Variable"",
+  ],
+  [
+    "font",
+    "700 64px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "EXAMPLE ORGANISATION",
+    567,
+    214,
+    780,
+  ],
+  [
+    "font",
+    "700 56px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "EVENT TICKETS",
+    567,
+    294,
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "BBD $50.00",
+    567,
+    402,
+    780,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-landscape 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-landscape.svg",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    959,
+    148,
+    580,
+    580,
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-landscape-donations 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-landscape-donations.svg",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    959,
+    148,
+    580,
+    580,
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "font",
+    "700 80px Arial",
+  ],
+  [
+    "save",
+  ],
+  [
+    "font",
+    "700 80px Arial",
+  ],
+  [
+    "fillText",
+    "ORGAN APPEAL",
+    453,
+    512,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-landscape-fixed 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-landscape-fixed.svg",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    959,
+    148,
+    580,
+    580,
+  ],
+  [
+    "save",
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 56px Arial",
+  ],
+  [
+    "font",
+    "700 56px Arial",
+  ],
+  [
+    "font",
+    "700 64px Arial",
+  ],
+  [
+    "fillText",
+    "EXAMPLE ORGANISATION",
+    453,
+    340,
+    700,
+  ],
+  [
+    "font",
+    "700 56px Arial",
+  ],
+  [
+    "fillText",
+    "EVENT TICKETS",
+    453,
+    420,
+  ],
+  [
+    "font",
+    "700 80px Arial",
+  ],
+  [
+    "fillText",
+    "BBD $50.00",
+    453,
+    528,
+    700,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-landscape-merchant 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-landscape-merchant.svg",
+    0,
+    0,
+    1701,
+    1134,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    959,
+    148,
+    580,
+    580,
+  ],
+  [
+    "save",
+  ],
+  [
+    "fillStyle",
+    "#dff2f9",
+  ],
+  [
+    "fillRect",
+    100,
+    150,
+    780,
+    590,
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "EXAMPLE",
+    497,
+    312,
+  ],
+  [
+    "fillText",
+    "ORGANISATION",
+    497,
+    408,
+  ],
+  [
+    "font",
+    "700 56px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "ACCEPTS QR",
+    497,
+    508,
+  ],
+  [
+    "fillText",
+    "PAYMENTS",
+    497,
+    576,
+  ],
+  [
+    "restore",
+  ],
+]
+`;
+
+exports[`payment-card assets and print configuration > retains original drawing layout for bimpay-merchant 1`] = `
+[
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "translate",
+    0,
+    0,
+  ],
+  [
+    "scale",
+    1,
+    1,
+  ],
+  [
+    "drawImage",
+    "bimpay-merchant.svg",
+    0,
+    0,
+    1134,
+    1701,
+  ],
+  [
+    "imageSmoothingEnabled",
+    false,
+  ],
+  [
+    "fillStyle",
+    "#ffffff",
+  ],
+  [
+    "fillRect",
+    113,
+    510,
+    908,
+    778,
+  ],
+  [
+    "drawImage",
+    "qr-image",
+    207,
+    539,
+    720,
+    720,
+  ],
+  [
+    "save",
+  ],
+  [
+    "fillStyle",
+    "#dff2f9",
+  ],
+  [
+    "fillRect",
+    114,
+    160,
+    906,
+    340,
+  ],
+  [
+    "fillStyle",
+    "#0114a8",
+  ],
+  [
+    "textAlign",
+    "center",
+  ],
+  [
+    "textBaseline",
+    "middle",
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "font",
+    "700 80px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "EXAMPLE",
+    567,
+    222,
+  ],
+  [
+    "fillText",
+    "ORGANISATION",
+    567,
+    318,
+  ],
+  [
+    "font",
+    "700 52px "Montserrat Variable"",
+  ],
+  [
+    "fillText",
+    "ACCEPTS QR PAYMENTS",
+    567,
+    416,
+  ],
+  [
+    "restore",
+  ],
+]
+`;

@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import QRCode from "qrcode";
-const BIMPAY_GUI = "bb.org.cb.mpqr";
-const BIMPAY_SCHEME = "QRBB";
+import StandaloneQrDialog from "./StandaloneQrDialog";
+import StandaloneQrOutput from "./StandaloneQrOutput";
+import { BIMPAY_GUI, BIMPAY_SCHEME, buildBiMPayFields, buildMerchantAccount, buildAdditionalData, buildPrivateMetadata, buildEmvPayload, generateTimestamp, isValidAmount, renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
+import type { EmvField, CoreFields, MerchantAccountFields, AdditionalDataFields, PrivateFields } from "bimpay-qr-generator";
+import { renderPaymentCard, exportPaymentCardPdf, QR_OUTPUT_SIZES, outputDimensions, templateDimensions } from "bimpay-payment-cards";
+import type { QrExportTemplateId, QrOutputSize } from "bimpay-payment-cards";
+type QrExportSourceId = "raw";
 import { MERCHANT_CATEGORY_OPTIONS } from "./data/merchantCategories";
 import { TRANSIT_DIRECTORY } from "./data/branchTransitCodes";
 
@@ -15,61 +19,11 @@ const SORTED_MERCHANT_CATEGORY_OPTIONS = [...MERCHANT_CATEGORY_OPTIONS].sort((a,
 type AmountMode = "variable" | "fixed";
 type RecipientType = "large-business" | "small-medium-business" | "microbusiness" | "organisation";
 const RECIPIENT_TYPES = [
-  { value: "small-medium-business", label: "Small / medium business" },
-  { value: "large-business", label: "Large business" },
-  { value: "organisation", label: "Charity / non-profit / social organisation" },
-  { value: "microbusiness", label: "Individual / microbusiness" },
+  { value: "small-medium-business", label: "Small or medium business" },
+  { value: "large-business", label: "Large/multi-branch business or corporation" },
+  { value: "organisation", label: "Charity, non-profit, social organisation or individual cause" },
+  { value: "microbusiness", label: "Individual or microbusiness" },
 ];
-type QrExportTemplateId = "bimpay-accepted" | "bimpay-donations" | "bimpay-fixed" | "bimpay-landscape" | "bimpay-landscape-donations" | "bimpay-landscape-fixed" | "bimpay-merchant" | "bimpay-landscape-merchant";
-type QrExportSourceId = "raw";
-type QrOutputSize = "original" | "a5" | "a4";
-const QR_OUTPUT_SIZES = {
-  original: { label: "Original - 1134 x 1701 px", width: 1134, height: 1701 },
-  a5: { label: "A5 print - 1748 x 2480 px", width: 1748, height: 2480 },
-  a4: { label: "A4 print - 2480 x 3508 px", width: 2480, height: 3508 },
-};
-
-interface EmvField {
-  tag: string;
-  value: string;
-}
-
-interface CoreFields {
-  payloadFormat: string;
-  initiationMethod: string;
-  merchantCategoryCode: string;
-  currency: string;
-  amount: string;
-  country: string;
-  merchantName: string;
-  merchantCity: string;
-}
-
-interface MerchantAccountFields {
-  gui: string;
-  fiAlias: string;
-  branchAlias: string;
-  accountReference: string;
-  participantCode: string;
-  scheme: string;
-}
-
-interface AdditionalDataFields {
-  billNumber: string;
-  mobileNumber: string;
-  storeLabel: string;
-  loyaltyNumber: string;
-  referenceLabel: string;
-  customerLabel: string;
-  terminalLabel: string;
-  purpose: string;
-}
-
-interface PrivateFields {
-  gui: string;
-  requestTimestamp: string;
-}
-
 interface QrExportSource {
   id: QrExportSourceId;
   label: string;
@@ -112,6 +66,10 @@ const CURRENCY_OPTIONS = [
 
 const EMPTY_ACCOUNT_REFERENCE = "";
 
+function draftTemplate(build: () => string, input: unknown): string {
+  try { return build(); } catch { return `Invalid TLV input: ${JSON.stringify(input)}`; }
+}
+
 const QR_EXPORT_TEMPLATES: QrExportTemplate[] = [
   { id: "bimpay-merchant", title: "BiMPay Merchant Name", description: "Accepted QR payments sign with the merchant name.", sizeLabel: "1134 x 1701 PNG" },
   { id: "bimpay-landscape-merchant", title: "BiMPay Landscape Merchant Name", description: "Landscape accepted QR payments sign with the merchant name.", sizeLabel: "1701 x 1134 PNG" },
@@ -131,43 +89,6 @@ const TEMPLATE_LAYOUTS = [
   { label: "Fixed Price QR Template", portrait: "bimpay-fixed", landscape: "bimpay-landscape-fixed" },
 ] as const;
 
-function tlv(tag: string, value: string): string {
-  const normalized = value.trim();
-  const length = normalized.length.toString().padStart(2, "0");
-  return `${tag}${length}${normalized}`;
-}
-
-function optionalTlv(tag: string, value: string): string {
-  return value.trim() ? tlv(tag, value) : "";
-}
-
-function crc16CcittFalse(input: string): string {
-  let crc = 0xffff;
-
-  for (let i = 0; i < input.length; i += 1) {
-    crc ^= input.charCodeAt(i) << 8;
-
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc =
-        (crc & 0x8000) !== 0
-          ? ((crc << 1) ^ 0x1021) & 0xffff
-          : (crc << 1) & 0xffff;
-    }
-  }
-
-  return crc.toString(16).toUpperCase().padStart(4, "0");
-}
-
-function buildEmvPayload(fields: EmvField[]): string {
-  const withoutCrc =
-    fields
-      .filter((field) => field.value.trim())
-      .map((field) => tlv(field.tag, field.value))
-      .join("") + "6304";
-
-  return `${withoutCrc}${crc16CcittFalse(withoutCrc)}`;
-}
-
 async function dataUrlToFile(dataUrl: string, filename: string): Promise<File> {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
@@ -183,375 +104,11 @@ function safeFileName(value: string): string {
   );
 }
 
-function generateTimestamp(): string {
-  const now = new Date();
-  const yyyy = now.getFullYear().toString();
-  const mm = (now.getMonth() + 1).toString().padStart(2, "0");
-  const dd = now.getDate().toString().padStart(2, "0");
-  const hh = now.getHours().toString().padStart(2, "0");
-  const mi = now.getMinutes().toString().padStart(2, "0");
-  const ss = now.getSeconds().toString().padStart(2, "0");
-  return `${yyyy}${mm}${dd}${hh}${mi}${ss}`;
-}
-
-function isValidAmount(value: string): boolean {
-  return /^\d+(\.\d{2})?$/.test(value.trim());
-}
-
 function downloadDataUrl(dataUrl: string, filename: string): void {
   const link = document.createElement("a");
   link.href = dataUrl;
   link.download = filename;
   link.click();
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load QR image."));
-    image.src = src;
-  });
-}
-
-async function prepareQrLogo(source: string): Promise<string> {
-  const image = await loadImage(source);
-  const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not prepare logo.");
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-  let left = canvas.width, top = canvas.height, right = -1, bottom = -1;
-  // Find visible artwork, excluding transparent and near-white outer padding.
-  for (let y = 0; y < canvas.height; y += 1) {
-    for (let x = 0; x < canvas.width; x += 1) {
-      const index = (y * canvas.width + x) * 4;
-      if (data[index + 3] <= 16 || (data[index] >= 245 && data[index + 1] >= 245 && data[index + 2] >= 245)) continue;
-      left = Math.min(left, x);
-      top = Math.min(top, y);
-      right = Math.max(right, x);
-      bottom = Math.max(bottom, y);
-    }
-  }
-  if (right < left) return canvas.toDataURL("image/png");
-  const padding = Math.max(1, Math.round(Math.max(right - left + 1, bottom - top + 1) * 0.01));
-  left = Math.max(0, left - padding);
-  top = Math.max(0, top - padding);
-  right = Math.min(canvas.width - 1, right + padding);
-  bottom = Math.min(canvas.height - 1, bottom + padding);
-  const cropped = document.createElement("canvas");
-  cropped.width = right - left + 1;
-  cropped.height = bottom - top + 1;
-  const croppedContext = cropped.getContext("2d");
-  if (!croppedContext) throw new Error("Could not crop logo.");
-  croppedContext.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
-  return cropped.toDataURL("image/png");
-}
-
-async function renderPaymentQr(payload: string, width: number, logo = "", margin = 4): Promise<string> {
-  const qr = await QRCode.toDataURL(payload, { width, margin, errorCorrectionLevel: logo ? "H" : "M" });
-  if (!logo) return qr;
-  const [qrImage, logoImage] = await Promise.all([loadImage(qr), loadImage(logo)]);
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = width;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not create logo QR.");
-  context.drawImage(qrImage, 0, 0, width, width);
-  const paddingRatio = 0.015;
-  const padding = width * paddingRatio;
-  const aspectRatio = logoImage.naturalWidth / logoImage.naturalHeight;
-  // Spend the same covered-area budget on wider/taller logos, not a fixed square.
-  const areaBudget = 0.22 ** 2;
-  const heightBudget = (Math.sqrt(paddingRatio ** 2 * (aspectRatio - 1) ** 2 + aspectRatio * areaBudget) - paddingRatio * (aspectRatio + 1)) / aspectRatio;
-  const scale = Math.min(width * 0.32 / logoImage.naturalWidth, width * 0.32 / logoImage.naturalHeight, width * heightBudget / logoImage.naturalHeight);
-  const logoWidth = logoImage.naturalWidth * scale;
-  const logoHeight = logoImage.naturalHeight * scale;
-  const backingWidth = logoWidth + padding * 2;
-  const backingHeight = logoHeight + padding * 2;
-  const cornerRadius = Math.min(backingWidth, backingHeight) * 0.18;
-  context.fillStyle = "#ffffff";
-  context.beginPath();
-  context.roundRect((width - backingWidth) / 2, (width - backingHeight) / 2, backingWidth, backingHeight, cornerRadius);
-  context.fill();
-  context.save();
-  context.clip();
-  context.drawImage(logoImage, (width - logoWidth) / 2, (width - logoHeight) / 2, logoWidth, logoHeight);
-  context.restore();
-  return canvas.toDataURL("image/png");
-}
-
-function templateDimensions(templateId: QrExportTemplateId) {
-  return templateId.startsWith("bimpay-landscape") ? { width: 1701, height: 1134 } : { width: 1134, height: 1701 };
-}
-
-function outputDimensions(templateId: QrExportTemplateId, size: QrOutputSize) {
-  const output = QR_OUTPUT_SIZES[size];
-  if (!templateId.startsWith("bimpay-landscape")) return output;
-  return {
-    width: output.height,
-    height: output.width,
-    label: `${size === "original" ? "Original landscape" : `${size.toUpperCase()} landscape print`} - ${output.height} x ${output.width} px`,
-  };
-}
-
-async function renderQrTemplatePng({
-  templateId,
-  qr,
-  merchantName,
-  donationCause = "",
-  fixedDescription = "",
-  fixedPrice = "",
-  outputSize = "original",
-  qrPayload = "",
-  logo = "",
-  isDonation = false,
-}: {
-  templateId: QrExportTemplateId;
-  qr: string;
-  merchantName: string;
-  merchantCity: string;
-  amountMode: AmountMode;
-  amount: string;
-  reference: string;
-  sourceLabel: string;
-  donationCause?: string;
-  fixedDescription?: string;
-  fixedPrice?: string;
-  outputSize?: QrOutputSize;
-  qrPayload?: string;
-  logo?: string;
-  isDonation?: boolean;
-}): Promise<string> {
-  const { width, height } = templateDimensions(templateId);
-  const output = outputDimensions(templateId, outputSize);
-  const landscape = templateId.startsWith("bimpay-landscape");
-  const fixedTemplate = templateId.endsWith("fixed");
-  const donationTemplate = templateId.endsWith("donations");
-  const merchantTemplate = templateId.endsWith("merchant");
-  const fixedDonation = isDonation && fixedTemplate;
-  const exportFont = landscape ? "Arial" : '"Montserrat Variable"';
-  if (merchantTemplate || (!landscape && (fixedTemplate || donationTemplate))) {
-    await document.fonts.load(`700 80px "Montserrat Variable"`);
-  }
-  const textCenter = landscape ? 453 : width / 2;
-  const textWidth = landscape ? 700 : 780;
-  const qrSize = landscape ? 580 : 720;
-  const exportScale = Math.min(output.width / width, output.height / height);
-  const qrImage = await loadImage(qrPayload ? await renderPaymentQr(qrPayload, Math.ceil(qrSize * exportScale), logo) : qr);
-  const canvas = document.createElement("canvas");
-  canvas.width = output.width;
-  canvas.height = output.height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not create export canvas.");
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.translate((canvas.width - width * exportScale) / 2, (canvas.height - height * exportScale) / 2);
-  context.scale(exportScale, exportScale);
-
-  if (templateId.startsWith("bimpay-")) {
-    if (fixedTemplate && !fixedPrice) {
-      throw new Error("Generate a fixed-amount QR to preview or export this template.");
-    }
-    if (fixedTemplate && !fixedDonation && fixedDescription.length > 30) {
-      throw new Error(
-        "Description must be 30 characters or fewer, including spaces."
-      );
-    }
-    const artwork = await loadImage(`${import.meta.env.BASE_URL}templates/${templateId}.svg`);
-    context.drawImage(artwork, 0, 0, width, height);
-    // The artwork uses points; this export renders at four pixels per point.
-    context.imageSmoothingEnabled = false;
-    if (landscape) {
-      context.drawImage(qrImage, 959, 148, qrSize, qrSize);
-    } else {
-      context.fillStyle = "#ffffff";
-      context.fillRect(113, 510, 908, 778);
-      context.drawImage(qrImage, 207, 539, qrSize, qrSize);
-    }
-    if (merchantTemplate) {
-      context.save();
-      // Blank the artwork's fixed heading so the full text block can be centred.
-      context.fillStyle = "#dff2f9";
-      if (landscape) context.fillRect(100, 150, 780, 590);
-      else context.fillRect(114, 160, 906, 340);
-      context.fillStyle = "#0114a8";
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      const name = merchantName.trim().toUpperCase();
-      const maxWidth = landscape ? 700 : 780;
-      const centerX = landscape ? 497 : width / 2;
-      context.font = '700 80px "Montserrat Variable"';
-      let lines = [name];
-      if (context.measureText(name).width > maxWidth) {
-        const spaces = Array.from(name.matchAll(/\s+/g), (match) => match.index);
-        const breaks = spaces.length ? spaces : Array.from({ length: name.length - 1 }, (_, index) => index + 1);
-        const widest = (index: number) => Math.max(context.measureText(name.slice(0, index).trim()).width, context.measureText(name.slice(index).trim()).width);
-        const split = breaks.reduce((best, index) => widest(index) < widest(best) ? index : best, breaks[0]);
-        lines = [name.slice(0, split).trim(), name.slice(split).trim()];
-      }
-      const widestLine = Math.max(maxWidth, ...lines.map((line) => context.measureText(line).width));
-      context.font = `700 ${80 * maxWidth / widestLine}px "Montserrat Variable"`;
-      const subtitleLines = landscape ? ["ACCEPTS QR", "PAYMENTS"] : ["ACCEPTS QR PAYMENTS"];
-      const subtitleSize = landscape ? 56 : 52;
-      const nameHeight = lines.length * 96 - 16;
-      const subtitleHeight = subtitleLines.length * (subtitleSize + 12) - 12;
-      const gap = 32;
-      const top = (landscape ? 438 : 312) - (nameHeight + gap + subtitleHeight) / 2;
-      lines.forEach((line, index) => context.fillText(line, centerX, top + 40 + index * 96));
-      context.font = `700 ${subtitleSize}px "Montserrat Variable"`;
-      subtitleLines.forEach((line, index) => context.fillText(line, centerX, top + nameHeight + gap + subtitleSize / 2 + index * (subtitleSize + 12)));
-      context.restore();
-    }
-    if (fixedTemplate) {
-      context.save();
-    
-      context.fillStyle = "#0114a8";
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-    
-      if (fixedDonation) {
-        const heading = `GIVE ${fixedPrice}`;
-        const entity = (donationCause.trim() || merchantName.trim()).toUpperCase();
-      
-        const centerY = landscape ? 438 : 312;
-        const maxWidth = textWidth;
-      
-        // Split organisation name into two lines if necessary
-        context.font = `700 56px ${exportFont}`;
-      
-        let entityLines = [entity];
-      
-        if (context.measureText(entity).width > maxWidth) {
-          const words = entity.split(/\s+/);
-      
-          if (words.length > 1) {
-            // Find the most balanced two-line split
-            let bestSplit = 1;
-            let smallestWidth = Infinity;
-      
-            for (let i = 1; i < words.length; i++) {
-              const first = words.slice(0, i).join(" ");
-              const second = words.slice(i).join(" ");
-      
-              const widest = Math.max(
-                context.measureText(first).width,
-                context.measureText(second).width
-              );
-      
-              if (widest < smallestWidth) {
-                smallestWidth = widest;
-                bestSplit = i;
-              }
-            }
-      
-            entityLines = [
-              words.slice(0, bestSplit).join(" "),
-              words.slice(bestSplit).join(" ")
-            ];
-          }
-        }
-      
-        // Centre the entire block vertically
-        const lineSpacing = 75;
-        const totalLines = 2 + entityLines.length;
-        const startY = centerY - ((totalLines - 1) * lineSpacing) / 2;
-      
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-      
-        // Line 1: Donation amount
-        context.font = `700 64px ${exportFont}`;
-        context.fillText(
-          heading,
-          textCenter,
-          startY,
-          maxWidth
-        );
-      
-        // Line 2: TO
-        context.font = `700 48px ${exportFont}`;
-        context.fillText(
-          "TO",
-          textCenter,
-          startY + lineSpacing,
-          maxWidth
-        );
-      
-        // Lines 3–4: Organisation name
-        context.font = `700 56px ${exportFont}`;
-      
-        entityLines.forEach((line, index) => {
-          context.fillText(
-            line,
-            textCenter,
-            startY + (2 + index) * lineSpacing,
-            maxWidth
-          );
-        });
-      } else {
-        context.font = `700 56px ${exportFont}`;
-        const description = fixedDescription.trim().toUpperCase();
-        let lines = description ? [description] : [];
-        if (context.measureText(description).width > textWidth) {
-          const breaks = Array.from(description.matchAll(/\s+/g), (match) => match.index);
-          const candidates = breaks.length ? breaks : Array.from({ length: description.length - 1 }, (_, index) => index + 1);
-          const split = candidates.reduce((best, index) => {
-            const widest = (position: number) => Math.max(
-              context.measureText(description.slice(0, position).trim()).width,
-              context.measureText(description.slice(position).trim()).width
-            );
-            return widest(index) < widest(best) ? index : best;
-          }, candidates[0]);
-          lines = [description.slice(0, split).trim(), description.slice(split).trim()];
-        }
-        const widestLine = Math.max(textWidth, ...lines.map((line) => context.measureText(line).width));
-        context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
-        // Centre the entire description/price block within the artwork's header.
-        const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
-        const gap = lines.length ? 40 : 0;
-        const top = (landscape ? 438 : 312) - (64 + 20 + descriptionHeight + gap + 80) / 2;
-        context.font = `700 64px ${exportFont}`;
-        context.fillText(merchantName.trim().toUpperCase(), textCenter, top + 32, textWidth);
-        context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
-        lines.forEach((line, index) => context.fillText(line, textCenter, top + 84 + 28 + index * 68));
-        context.font = `700 80px ${exportFont}`;
-        context.fillText(fixedPrice, textCenter, top + 84 + descriptionHeight + gap + 40, textWidth);
-      }
-    
-      context.restore();
-    }
-    if (donationTemplate) {
-      const cause = donationCause.trim().slice(0, 30).toUpperCase();
-      context.fillStyle = "#0114a8";
-      context.textAlign = "center";
-      context.font = `700 80px ${exportFont}`;
-      const words = cause.split(/\s+/).filter(Boolean);
-      const lines: string[] = [];
-      let line = "";
-      for (const word of words) {
-        const next = line ? `${line} ${word}` : word;
-        if (line && context.measureText(next).width > textWidth) {
-          lines.push(line);
-          line = word;
-        } else line = next;
-      }
-      if (line) lines.push(line);
-      const visibleLines = lines.length > 2 ? [lines[0], lines.slice(1).join(" ")] : lines;
-      visibleLines.forEach((text, index) => {
-        const fontSize = Math.min(80, 80 * textWidth / Math.max(textWidth, context.measureText(text).width));
-        context.save();
-        context.font = `700 ${fontSize}px ${exportFont}`;
-        context.fillText(text, textCenter, (landscape ? 126 : 0) + (visibleLines.length === 1 ? 386 : 344 + index * 96));
-        context.restore();
-      });
-    }
-    return canvas.toDataURL("image/png");
-  }
-
-  throw new Error("Unknown export template.");
 }
 
 export default function Generator() {
@@ -605,6 +162,7 @@ export default function Generator() {
 
   const [generatedFingerprint, setGeneratedFingerprint] = useState("");
   const [rawQr, setRawQr] = useState("");
+  const [showStandaloneQr, setShowStandaloneQr] = useState(false);
   const [generatedPayload, setGeneratedPayload] = useState("");
   const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
   const [message, setMessage] = useState("");
@@ -622,55 +180,42 @@ export default function Generator() {
   const exportSourceId: QrExportSourceId = "raw";
 
   const merchantAccountTemplate = useMemo(() => {
-    return [
-      optionalTlv("00", merchantAccountFields.gui),
-      optionalTlv("01", merchantAccountFields.fiAlias),
-      optionalTlv("02", merchantAccountFields.branchAlias),
-      optionalTlv("03", merchantAccountFields.accountReference),
-      optionalTlv("04", merchantAccountFields.participantCode),
-      optionalTlv("11", merchantAccountFields.scheme),
-    ].join("");
+    return draftTemplate(() => buildMerchantAccount(merchantAccountFields), merchantAccountFields);
   }, [merchantAccountFields]);
 
-  const additionalDataTemplate = useMemo(() => {
+  const includedAdditionalData = useMemo(() => {
     const fullDetails = technicalMode || recipientType === "large-business";
     const businessDetails = fullDetails || recipientType === "small-medium-business" || recipientType === "microbusiness";
-    return [
-      optionalTlv("01", businessDetails ? additionalDataFields.billNumber : ""),
-      optionalTlv("02", fullDetails ? additionalDataFields.mobileNumber : ""),
-      optionalTlv("03", fullDetails ? additionalDataFields.storeLabel : ""),
-      optionalTlv("04", fullDetails ? additionalDataFields.loyaltyNumber : ""),
-      optionalTlv("05", additionalDataFields.referenceLabel),
-      optionalTlv("06", fullDetails ? additionalDataFields.customerLabel : ""),
-      optionalTlv("07", fullDetails ? additionalDataFields.terminalLabel : ""),
-      optionalTlv("08", additionalDataFields.purpose),
-    ].join("");
+    return {
+      billNumber: businessDetails ? additionalDataFields.billNumber : "",
+      mobileNumber: fullDetails ? additionalDataFields.mobileNumber : "",
+      storeLabel: fullDetails ? additionalDataFields.storeLabel : "",
+      loyaltyNumber: fullDetails ? additionalDataFields.loyaltyNumber : "",
+      referenceLabel: additionalDataFields.referenceLabel,
+      customerLabel: fullDetails ? additionalDataFields.customerLabel : "",
+      terminalLabel: fullDetails ? additionalDataFields.terminalLabel : "",
+      purpose: additionalDataFields.purpose,
+    };
   }, [additionalDataFields, recipientType, technicalMode]);
 
+  const additionalDataTemplate = useMemo(
+    () => draftTemplate(() => buildAdditionalData(includedAdditionalData), includedAdditionalData),
+    [includedAdditionalData]
+  );
+
   const privateTemplate = useMemo(() => {
-    return [
-      optionalTlv("00", privateFields.gui),
-      optionalTlv("01", privateFields.requestTimestamp),
-    ].join("");
+    return buildPrivateMetadata(privateFields.gui, privateFields.requestTimestamp);
   }, [privateFields]);
 
-  const amountTagValue = amountMode === "variable" ? "***" : coreFields.amount;
-
   const emvFields = useMemo<EmvField[]>(() => {
-    return [
-      { tag: "00", value: coreFields.payloadFormat },
-      { tag: "01", value: coreFields.initiationMethod },
-      { tag: "26", value: merchantAccountTemplate },
-      { tag: "52", value: coreFields.merchantCategoryCode },
-      { tag: "53", value: coreFields.currency },
-      { tag: "54", value: amountTagValue },
-      { tag: "58", value: coreFields.country },
-      { tag: "59", value: coreFields.merchantName.slice(0, 25) },
-      { tag: "60", value: coreFields.merchantCity.slice(0, 15) },
-      { tag: "62", value: additionalDataTemplate },
-      { tag: "80", value: privateTemplate },
-    ];
-  }, [coreFields, merchantAccountTemplate, additionalDataTemplate, privateTemplate, amountTagValue]);
+    const input = {
+      ...coreFields, ...merchantAccountFields, amountMode,
+      additionalData: includedAdditionalData,
+      privateGui: privateFields.gui, timestamp: privateFields.requestTimestamp,
+    };
+    try { return buildBiMPayFields(input); }
+    catch { return [{ tag: "26", value: `Invalid TLV input: ${JSON.stringify(input)}` }]; }
+  }, [coreFields, merchantAccountFields, amountMode, includedAdditionalData, privateFields]);
 
   const currentFingerprint = useMemo(
     () =>
@@ -685,6 +230,10 @@ export default function Generator() {
   const qrIsCurrent =
     Boolean(generatedPayload) &&
     generatedFingerprint === currentFingerprint;
+
+  useEffect(() => {
+    if (!qrIsCurrent) setShowStandaloneQr(false);
+  }, [qrIsCurrent]);
 
   const generationIdRef = useRef(0);
   const [generating, setGenerating] = useState(false);
@@ -728,7 +277,7 @@ export default function Generator() {
       const timestamp = generateTimestamp();
       const fieldsForGeneration = emvFields.map((field) => field.tag === "80" ? {
         ...field,
-        value: optionalTlv("00", privateFields.gui) + optionalTlv("01", timestamp),
+        value: buildPrivateMetadata(privateFields.gui, timestamp),
       } : field);
       const payloadForGeneration = buildEmvPayload(fieldsForGeneration);
       if (!coreFields.merchantName.trim() || !coreFields.merchantCity.trim() ||
@@ -773,6 +322,7 @@ export default function Generator() {
       setGeneratedFixedPrice(amountMode === "fixed" ? `${currencyCode} $${Number(coreFields.amount).toFixed(2)}` : "");
       setMessage("QR generated.");
     } catch (error) {
+      if (generationId !== generationIdRef.current) return;
       console.error(error);
       setMessage(error instanceof Error ? error.message : "Could not generate QR codes.");
     } finally {
@@ -1258,6 +808,10 @@ export default function Generator() {
             </p>
           )}
 
+          {showStandaloneQr && qrIsCurrent && <StandaloneQrDialog
+            payload={generatedPayload} logo={qrLogo} merchantName={coreFields.merchantName}
+            fixedPrice={generatedFixedPrice} onClose={() => setShowStandaloneQr(false)}
+          />}
         </section>
 
         <section className="space-y-6">
@@ -1278,6 +832,7 @@ export default function Generator() {
             selectedSourceId={exportSourceId}
             selectedTemplateId={exportTemplateId}
             sources={qrExportSources}
+            onOpenStandaloneQr={() => setShowStandaloneQr(true)}
             onTemplateChange={setExportTemplateId}
             isDonation={isDonation}
           />
@@ -1450,6 +1005,7 @@ interface QrTemplateExporterProps {
   selectedSourceId: QrExportSourceId;
   selectedTemplateId: QrExportTemplateId;
   sources: QrExportSource[];
+  onOpenStandaloneQr: () => void;
   onTemplateChange: (value: QrExportTemplateId) => void;
   isDonation: boolean;
 }
@@ -1468,8 +1024,10 @@ function QrTemplateExporter({
   selectedTemplateId,
   sources,
   onTemplateChange,
+  onOpenStandaloneQr,
   isDonation,
 }: QrTemplateExporterProps) {
+  const [outputsInitiallyOpen] = useState(() => window.innerWidth >= 768);
   const [exportMessage, setExportMessage] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [donationCause, setDonationCause] = useState("");
@@ -1502,36 +1060,45 @@ function QrTemplateExporter({
   const selectedLayout = TEMPLATE_LAYOUTS.find((layout) => layout.portrait === selectedTemplate.id || layout.landscape === selectedTemplate.id) ?? TEMPLATE_LAYOUTS[0];
   const selectedSource =
     sources.find((source) => source.id === selectedSourceId) ?? sources[0];
-  const hasGeneratedQr = sources.some((source) => source.qr);
   const selectedPaperLabel = (size: QrOutputSize) => technicalMode
     ? outputDimensions(selectedTemplate.id, size).label
     : `${size === "original" ? "Small sign" : size.toUpperCase()} - ${orientation === "landscape" ? "Landscape" : "Portrait"}`;
-  const amountLabel =
-    amountMode === "variable" ? `${recipientType === "organisation" ? "Supporter" : "Customer"} enters amount` : `Fixed amount BBD ${amount}`;
   const descriptionError = selectedTemplate.id.endsWith("fixed") && !donation && fixedDescription.length > 30
     ? `Description is ${fixedDescription.length} characters. Remove ${fixedDescription.length - 30} to fit the 30-character limit (including spaces).`
     : "";
   const previewKey = JSON.stringify([selectedSource.value, selectedTemplate.id, outputSize, donationCause, fixedDescription, fixedPrice, amount, amountMode, merchantCity, merchantName, reference, logo, donation]);
+  const latestPreviewKey = useRef(previewKey);
+  latestPreviewKey.current = previewKey;
+  const assertExportCurrent = () => {
+    if (!selectedSource.qr || latestPreviewKey.current !== previewKey) {
+      throw new Error("Payment details or flyer settings changed. Generate the QR again if required and retry export.");
+    }
+  };
   const previewIsCurrent = renderedPreviewKey === previewKey;
   const activePreviewDataUrl = selectedSource.qr && !descriptionError && previewIsCurrent ? previewDataUrl : "";
   const previewPlaceholder = descriptionError || (!selectedSource.qr
     ? "Generate the selected QR source to preview this template."
     : (previewIsCurrent && previewMessage) || "Rendering preview...");
 
+  async function renderCard(input: Parameters<typeof renderPaymentCard>[0] & { qrPayload: string; logo: string }): Promise<string> {
+    const dimensions = templateDimensions(input.templateId);
+    const output = outputDimensions(input.templateId, input.outputSize ?? "original");
+    const scale = Math.min(output.width / dimensions.width, output.height / dimensions.height);
+    const qrSize = input.templateId.startsWith("bimpay-landscape") ? 580 : 720;
+    const qr = await renderPaymentQr(input.qrPayload, Math.ceil(qrSize * scale), input.logo);
+    const { qrPayload: _payload, logo: _logo, ...cardInput } = input;
+    return renderPaymentCard({ ...cardInput, qr });
+  }
+
   async function createTemplatePng(source = selectedSource): Promise<string> {
     if (!source.qr) {
       throw new Error("Generate this QR source before exporting a template.");
     }
 
-    return renderQrTemplatePng({
+    const image = await renderCard({
       templateId: selectedTemplate.id,
       qr: source.qr,
       merchantName,
-      merchantCity,
-      amountMode,
-      amount,
-      reference,
-      sourceLabel: source.label,
       donationCause,
       fixedDescription,
       fixedPrice,
@@ -1540,6 +1107,8 @@ function QrTemplateExporter({
       logo,
       isDonation: donation,
     });
+    assertExportCurrent();
+    return image;
   }
 
   useEffect(() => {
@@ -1551,15 +1120,10 @@ function QrTemplateExporter({
       };
     }
 
-    void renderQrTemplatePng({
+    void renderCard({
       templateId: selectedTemplate.id,
       qr: selectedSource.qr,
       merchantName,
-      merchantCity,
-      amountMode,
-      amount,
-      reference,
-      sourceLabel: selectedSource.label,
       donationCause,
       fixedDescription,
       fixedPrice,
@@ -1623,6 +1187,7 @@ function QrTemplateExporter({
         `${safeFileName(`${merchantName}-${selectedTemplate.title}-${outputSize}`)}.png`
       );
 
+      assertExportCurrent();
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           title: selectedTemplate.title,
@@ -1645,27 +1210,12 @@ function QrTemplateExporter({
     setExportMessage("Preparing PDF...");
     try {
       const imageData = await createTemplatePng();
-      const { PDFDocument } = await import("pdf-lib");
-      const pdf = await PDFDocument.create();
-      const landscape = selectedTemplate.id.startsWith("bimpay-landscape");
-      const millimetresToPoints = (value: number) => value * 72 / 25.4;
-      let pageWidth: number;
-      let pageHeight: number;
-      if (outputSize === "original") {
-        const dimensions = templateDimensions(selectedTemplate.id);
-        pageWidth = dimensions.width / 4;
-        pageHeight = dimensions.height / 4;
-      } else {
-        const [shortSide, longSide] = outputSize === "a4" ? [210, 297] : [148, 210];
-        pageWidth = millimetresToPoints(landscape ? longSide : shortSide);
-        pageHeight = millimetresToPoints(landscape ? shortSide : longSide);
-      }
-      const page = pdf.addPage([pageWidth, pageHeight]);
-      const artwork = await pdf.embedPng(imageData);
-      page.drawImage(artwork, { x: 0, y: 0, width: pageWidth, height: pageHeight });
-      pdf.setTitle(`${selectedTemplate.title} - ${merchantName || "Payment QR"}`);
-      pdf.setCreator("BiMPay QR Utility");
-      const bytes = await pdf.save();
+      const bytes = await exportPaymentCardPdf(imageData, {
+        templateId: selectedTemplate.id, size: outputSize,
+        title: `${selectedTemplate.title} - ${merchantName || "Payment QR"}`,
+        creator: "BiMPay QR Utility",
+      });
+      assertExportCurrent();
       const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }));
       downloadDataUrl(url, `${safeFileName(`${merchantName}-${selectedTemplate.title}-${outputSize}`)}.pdf`);
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -1679,9 +1229,23 @@ function QrTemplateExporter({
 
   return (
     <EditorSection
-      title={technicalMode ? "Export Templates" : "Print or share"}
+      title="Print and Share"
     >
-      <div className="grid gap-4 sm:grid-cols-2">
+      <section aria-labelledby="qr-code-section-title">
+        <details open={outputsInitiallyOpen}>
+          <summary className="cursor-pointer text-slate-950">
+            <h3 id="qr-code-section-title" className="inline text-lg font-bold">QR Code</h3>
+          </summary>
+          <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
+        </details>
+      </section>
+
+      <section aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
+        <details open={outputsInitiallyOpen}>
+          <summary className="cursor-pointer text-slate-950">
+            <h3 id="payment-card-section-title" className="inline text-lg font-bold">QR Payment Card</h3>
+          </summary>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-2 block text-sm font-semibold text-slate-700">Template</span>
           <select
@@ -1775,42 +1339,10 @@ function QrTemplateExporter({
         </label>
       )}
 
-      <div className="mt-5">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-start gap-4">
-            <div
-              className="grid h-28 w-28 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white p-2"
-            >
-              {selectedSource.qr ? (
-                <img src={selectedSource.qr} alt="" className="h-full w-full" />
-              ) : (
-                <span className="px-2 text-center text-xs font-bold text-slate-400">
-                  Generate QR
-                </span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                {selectedTemplate.title}
-              </div>
-              <div className="mt-2 text-xl font-black text-slate-950 break-words">
-                {merchantName || "Your business name"}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-600">
-                {amountLabel}
-              </div>
-              <div className="mt-3 text-xs leading-5 text-slate-500">
-                {hasGeneratedQr ? "Your payment QR is ready." : "Create your payment QR to download or share it."}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="mt-5 rounded-lg border border-slate-200 bg-slate-100 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-black text-slate-950">Printable QR preview</div>
+            <h4 id="payment-card-preview-title" className="text-sm font-black text-slate-950">Printable QR Payment Card preview</h4>
             <div className="text-xs font-semibold text-slate-500">
               Matches the exported PNG and PDF for the selected layout and size.
             </div>
@@ -1873,6 +1405,8 @@ function QrTemplateExporter({
           {exportMessage}
         </div>
       )}
+        </details>
+      </section>
     </EditorSection>
   );
 }
@@ -1887,6 +1421,16 @@ interface OutputBlockProps {
 
 function OutputBlock({ title, description, value, qr, onCopy }: OutputBlockProps) {
   const [shareMessage, setShareMessage] = useState("");
+  const latestValue = useRef(value);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  latestValue.current = value;
+  const assertCurrent = () => {
+    if (!mounted.current || !value || latestValue.current !== value) throw new Error("Payment details changed. Generate the QR again.");
+  };
 
   async function shareQr(): Promise<void> {
     try {
@@ -1896,6 +1440,7 @@ function OutputBlock({ title, description, value, qr, onCopy }: OutputBlockProps
       }
 
       const file = await dataUrlToFile(qr, `${safeFileName(title)}.png`);
+      assertCurrent();
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ title, text: value, files: [file] });
@@ -1917,6 +1462,10 @@ function OutputBlock({ title, description, value, qr, onCopy }: OutputBlockProps
       setShareMessage("Sharing is not supported here, so the value was copied.");
     } catch (error) {
       console.error(error);
+      if (!mounted.current || !value || latestValue.current !== value) {
+        setShareMessage("Payment details changed. Generate the QR again.");
+        return;
+      }
       await navigator.clipboard.writeText(value);
       setShareMessage("Could not share QR. The value was copied instead.");
     }

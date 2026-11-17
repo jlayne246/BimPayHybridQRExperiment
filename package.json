@@ -1,0 +1,28 @@
+{
+  "name": "bimpay-experiments",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "bimpay-qr-utility"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w bimpay-qr-generator && npm run build -w bimpay-payment-cards",
+    "build": "npm run build -w bimpay-qr-utility",
+    "test": "vitest run",
+    "test:browser": "npm run build:packages && playwright test",
+    "dev": "npm run build:packages && npm run dev -w bimpay-qr-utility",
+    "pretest": "npm run build:packages"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/qrcode": "^1.5.6",
+    "jsdom": "^28.0.0",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.0"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
