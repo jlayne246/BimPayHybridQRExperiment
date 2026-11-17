@@ -1231,13 +1231,20 @@ function QrTemplateExporter({
       title="Print and Share"
     >
       <section aria-labelledby="qr-code-section-title">
-        <h3 id="qr-code-section-title" className="text-lg font-bold text-slate-950">QR Code</h3>
-        <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
+        <details open>
+          <summary className="cursor-pointer text-slate-950">
+            <h3 id="qr-code-section-title" className="inline text-lg font-bold">QR Code</h3>
+          </summary>
+          <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
+        </details>
       </section>
 
       <section aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
-        <h3 id="payment-card-section-title" className="mb-4 text-lg font-bold text-slate-950">QR Payment Card</h3>
-      <div className="grid gap-4 sm:grid-cols-2">
+        <details open>
+          <summary className="cursor-pointer text-slate-950">
+            <h3 id="payment-card-section-title" className="inline text-lg font-bold">QR Payment Card</h3>
+          </summary>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-2 block text-sm font-semibold text-slate-700">Template</span>
           <select
@@ -1397,6 +1404,7 @@ function QrTemplateExporter({
           {exportMessage}
         </div>
       )}
+        </details>
       </section>
     </EditorSection>
   );

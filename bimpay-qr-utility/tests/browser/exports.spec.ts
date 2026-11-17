@@ -124,6 +124,26 @@ test("standalone panel sits above printable preview and exports QR-only PNG, PDF
   await expect(page.getByRole("heading", { name: "QR Code", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "QR Payment Card", exact: true })).toBeVisible();
   await expect(page.getByText("Your payment QR is ready.", { exact: true })).toHaveCount(0);
+  const qrSection = page.getByRole("region", { name: "QR Code", exact: true });
+  const cardSection = page.getByRole("region", { name: "QR Payment Card", exact: true });
+  const qrSummary = qrSection.locator("summary");
+  const cardSummary = cardSection.locator("summary");
+  const qrImage = await panel.getByAltText("Standalone payment QR").getAttribute("src");
+  await expect(cardSection.getByLabel("Paper size")).toBeVisible();
+  await qrSummary.click();
+  await expect(panel).not.toBeVisible();
+  await cardSection.getByLabel("Paper size").selectOption("a5");
+  await expect(panel).not.toBeVisible(); // A card settings update must not reopen QR Code.
+  await cardSummary.click();
+  await expect(cardSection.getByLabel("Paper size")).not.toBeVisible();
+  await qrSummary.focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toBeVisible();
+  await expect(cardSection.getByLabel("Paper size")).not.toBeVisible();
+  await expect(panel.getByAltText("Standalone payment QR")).toHaveAttribute("src", qrImage!);
+  await cardSummary.click();
+  await expect(cardSection.getByLabel("Paper size")).toHaveValue("a5");
+  await cardSection.getByLabel("Paper size").selectOption("a4");
   let download = page.waitForEvent("download");
   await panel.getByRole("button", { name: "Download QR as PNG" }).click();
   const pngFile = await download;
