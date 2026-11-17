@@ -8,10 +8,10 @@ async function validForm(page: import("@playwright/test").Page) {
   await page.getByLabel(/^Branch/).selectOption("0");
   await page.getByLabel("Account / merchant number").fill("00123");
 }
-async function generate(page: import("@playwright/test").Page) {
+async function generate(page: import("@playwright/test").Page, previewVisible = true) {
   await page.getByRole("button", { name: "Create Payment QR" }).click();
   await expect(page.getByText("QR generated.", { exact: true })).toBeVisible();
-  await expect(page.getByAltText(/ preview$/)).toBeVisible();
+  if (previewVisible) await expect(page.getByAltText(/ preview$/)).toBeVisible();
 }
 test("real browser renders eight templates and downloads PNG/PDF", async ({ page }) => {
   const errors: string[] = [];
@@ -106,7 +106,15 @@ test("standalone QR dialog downloads a real 2048px PNG and closes with Escape", 
 test("standalone panel sits above printable preview and exports QR-only PNG, PDF and sharing fallback", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await validForm(page);
-  await generate(page);
+  const qrDetails = page.locator('[aria-labelledby="qr-code-section-title"] details');
+  const cardDetails = page.locator('[aria-labelledby="payment-card-section-title"] details');
+  await expect(qrDetails).toHaveJSProperty("open", false);
+  await expect(cardDetails).toHaveJSProperty("open", false);
+  await generate(page, false);
+  await expect(qrDetails).toHaveJSProperty("open", false);
+  await expect(cardDetails).toHaveJSProperty("open", false);
+  await qrDetails.locator("summary").click();
+  await cardDetails.locator("summary").click();
   const panel = page.getByRole("region", { name: "Standalone QR output" });
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeEnabled();
@@ -134,6 +142,12 @@ test("standalone panel sits above printable preview and exports QR-only PNG, PDF
   await expect(panel).not.toBeVisible();
   await cardSection.getByLabel("Paper size").selectOption("a5");
   await expect(panel).not.toBeVisible(); // A card settings update must not reopen QR Code.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(qrDetails).toHaveJSProperty("open", false);
+  await expect(cardDetails).toHaveJSProperty("open", true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(qrDetails).toHaveJSProperty("open", false);
+  await expect(cardDetails).toHaveJSProperty("open", true);
   await cardSummary.click();
   await expect(cardSection.getByLabel("Paper size")).not.toBeVisible();
   await qrSummary.focus();

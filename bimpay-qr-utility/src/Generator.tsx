@@ -1027,6 +1027,7 @@ function QrTemplateExporter({
   onOpenStandaloneQr,
   isDonation,
 }: QrTemplateExporterProps) {
+  const [outputsInitiallyOpen] = useState(() => window.innerWidth >= 768);
   const [exportMessage, setExportMessage] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [donationCause, setDonationCause] = useState("");
@@ -1231,7 +1232,7 @@ function QrTemplateExporter({
       title="Print and Share"
     >
       <section aria-labelledby="qr-code-section-title">
-        <details open>
+        <details open={outputsInitiallyOpen}>
           <summary className="cursor-pointer text-slate-950">
             <h3 id="qr-code-section-title" className="inline text-lg font-bold">QR Code</h3>
           </summary>
@@ -1240,7 +1241,7 @@ function QrTemplateExporter({
       </section>
 
       <section aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
-        <details open>
+        <details open={outputsInitiallyOpen}>
           <summary className="cursor-pointer text-slate-950">
             <h3 id="payment-card-section-title" className="inline text-lg font-bold">QR Payment Card</h3>
           </summary>
