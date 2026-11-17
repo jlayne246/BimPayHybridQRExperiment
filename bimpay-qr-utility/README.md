@@ -4,7 +4,7 @@ Standalone browser-only QR generator extracted from the experimental QR lab for 
 
 ## Run
 
-Use Node.js 22.12+ (or a compatible newer release).
+Use Node.js 22.12+ (or a compatible newer release). Run from the repository root.
 
 ```sh
 npm ci
@@ -14,10 +14,10 @@ npm run dev
 ## Static Hosting
 
 ```sh
-npm run build
+npm run build # from repository root
 ```
 
-Publish the contents of `dist/` on any static HTTPS host. No API, database, account, server secrets, or environment variables are required. `base: "./"` supports deployment in a subdirectory. The build can be moved into a separate repository without the parent application.
+Publish the contents of `bimpay-qr-utility/dist/` on any static HTTPS host. No API, database, account, server secrets, or environment variables are required. `base: "./"` supports deployment in a subdirectory. The built static files can be hosted independently; source builds now use the two sibling workspace packages.
 
 ## Behaviour
 
@@ -25,7 +25,7 @@ Publish the contents of `dist/` on any static HTTPS host. No API, database, acco
 - Merchant City is locked to `BRIDGETOWN` and hidden on the merchant page. Payload format, initiation method, GUI, scheme, and automatic generation timestamp remain locked in both views.
 - Recipient type controls the simplified form: Individual / microbusiness uses name/trading-name and receiving-account labels; Small / medium business (default) uses business labels; both offer optional invoice/reference/notes. Large business additionally offers contact, store, loyalty, customer, and till references. Hidden details are preserved in memory but omitted from simplified-page QR generation. Customise / Experiment exposes the full additional-data set for deliberate testing.
 - Category is selectable for all recipient types. Individual / microbusiness does not imply money transfer or force `4829`; select a category appropriate to the activity.
-- Charity / non-profit / social organisation uses organisation/supporter labels, optional purpose/reference, and defaults to the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
+- Charity / non-profit / social organisation uses organisation/supporter labels, optional purpose/reference, and shows an explicit charitable-donation checkbox. Organisation identity alone does not select donation mode. Enabling donations selects the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
 - Merchant/routing fields and QR rendering run in browser memory.
 - Public Sans is bundled locally for the interface. Montserrat is bundled locally for generated portrait cause, description, and price labels to match the v2 SVG artwork; landscape labels retain Arial. Both fonts are distributed through Fontsource under the SIL Open Font License, without external font-service requests.
 - No payment payloads are sent to an API or stored in browser storage.
@@ -42,3 +42,31 @@ Publish the contents of `dist/` on any static HTTPS host. No API, database, acco
 The payload layout retains the prototype's `bb.org.cb.mpqr` GUI, `QRBB` scheme, observed tag-26 routing fields, and `***` variable-amount convention. Confirm these conventions and approved branding with the scheme owner before official adoption. The utility generates QR files; it does not process payments.
 
 The original application remains in `../bimpay-hybrid-qr-prototype` and is unaffected by this extraction.
+
+
+## Workspace architecture
+
+The repository root manages `packages/bimpay-qr-generator`, `packages/bimpay-payment-cards`, and this utility with npm workspaces and one root lockfile. The original `bimpay-hybrid-qr-prototype` remains outside these workspaces and is unchanged.
+
+- [QR generator](../packages/bimpay-qr-generator/README.md): pure TLV/CRC and high-level payload API; separate browser QR/logo rendering.
+- [Payment cards](../packages/bimpay-payment-cards/README.md): eight bundled SVG templates, local export fonts, Canvas PNG and lazy PDF export. Accepts an existing QR image without a QR-generator dependency.
+- This React app owns inputs, banking directory, recipient/donation choices, validation feedback, fingerprints, request IDs, preview state, downloads and sharing. It prepares print-resolution QR images before calling the card library.
+
+From the repository root:
+
+```sh
+npm ci
+npm run build # builds both packages, then the Vite utility
+npm test # Vitest package and React integration tests
+npm run test:browser # actual Chromium PNG/PDF exports
+```
+
+Browser tests default to `/usr/bin/chromium`; set `CHROMIUM_PATH` to another Chromium executable if necessary. Package builds/tests can run separately with `npm run build -w <package-name>` and `npm test -w <package-name>`. Build packages before running `npm run dev -w bimpay-qr-utility`; root `npm run dev` does that automatically. Do not run a separate `npm ci` inside the utility.
+
+Both packages are private ESM libraries with declarations and no React/Vite runtime dependency. See their READMEs for APIs, packed-archive installation in other applications, asset handling, and browser requirements. Nothing is published to npm.
+
+The stale-QR safeguard remains based on encoded payment fields, private GUI and QR logo, excluding generated timestamps and flyer-only settings. Changed payment data or logos disable stale previews/exports until regeneration. Generation request IDs prevent older completions or errors from replacing newer state; clearing the form invalidates pending requests. Async PNG/PDF/sharing work also rechecks freshness before delivering a file. Fixed-price display labels are captured with the successfully generated payload.
+
+The repository is an independently developed experimental utility. The generator is not an officially certified implementation and does not guarantee compatibility with all payment applications. The software does not execute or process payments. Official use of BiMPay branding or scheme-specific functionality may require authorisation. No institutional endorsement is claimed.
+
+See [refactor notes](../docs/PACKAGE_EXTRACTION.md) for compatibility decisions, validation and the small necessary defect fixes.
