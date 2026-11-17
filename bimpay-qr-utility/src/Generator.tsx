@@ -1059,12 +1059,9 @@ function QrTemplateExporter({
   const selectedLayout = TEMPLATE_LAYOUTS.find((layout) => layout.portrait === selectedTemplate.id || layout.landscape === selectedTemplate.id) ?? TEMPLATE_LAYOUTS[0];
   const selectedSource =
     sources.find((source) => source.id === selectedSourceId) ?? sources[0];
-  const hasGeneratedQr = sources.some((source) => source.qr);
   const selectedPaperLabel = (size: QrOutputSize) => technicalMode
     ? outputDimensions(selectedTemplate.id, size).label
     : `${size === "original" ? "Small sign" : size.toUpperCase()} - ${orientation === "landscape" ? "Landscape" : "Portrait"}`;
-  const amountLabel =
-    amountMode === "variable" ? `${recipientType === "organisation" ? "Supporter" : "Customer"} enters amount` : `Fixed amount BBD ${amount}`;
   const descriptionError = selectedTemplate.id.endsWith("fixed") && !donation && fixedDescription.length > 30
     ? `Description is ${fixedDescription.length} characters. Remove ${fixedDescription.length - 30} to fit the 30-character limit (including spaces).`
     : "";
@@ -1231,8 +1228,15 @@ function QrTemplateExporter({
 
   return (
     <EditorSection
-      title={technicalMode ? "Export Templates" : "Print or share"}
+      title="Print / Share"
     >
+      <section aria-labelledby="qr-code-section-title">
+        <h3 id="qr-code-section-title" className="text-lg font-bold text-slate-950">QR Code</h3>
+        <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
+      </section>
+
+      <section aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
+        <h3 id="payment-card-section-title" className="mb-4 text-lg font-bold text-slate-950">QR Payment Card</h3>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-2 block text-sm font-semibold text-slate-700">Template</span>
@@ -1327,44 +1331,10 @@ function QrTemplateExporter({
         </label>
       )}
 
-      <div className="mt-5">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-start gap-4">
-            <div
-              className="grid h-28 w-28 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white p-2"
-            >
-              {selectedSource.qr ? (
-                <img src={selectedSource.qr} alt="" className="h-full w-full" />
-              ) : (
-                <span className="px-2 text-center text-xs font-bold text-slate-400">
-                  Generate QR
-                </span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                {selectedTemplate.title}
-              </div>
-              <div className="mt-2 text-xl font-black text-slate-950 break-words">
-                {merchantName || "Your business name"}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-slate-600">
-                {amountLabel}
-              </div>
-              <div className="mt-3 text-xs leading-5 text-slate-500">
-                {hasGeneratedQr ? "Your payment QR is ready." : "Create your payment QR to download or share it."}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
-
       <div className="mt-5 rounded-lg border border-slate-200 bg-slate-100 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-black text-slate-950">Printable QR Payment Card preview</div>
+            <h4 id="payment-card-preview-title" className="text-sm font-black text-slate-950">Printable QR Payment Card preview</h4>
             <div className="text-xs font-semibold text-slate-500">
               Matches the exported PNG and PDF for the selected layout and size.
             </div>
@@ -1427,6 +1397,7 @@ function QrTemplateExporter({
           {exportMessage}
         </div>
       )}
+      </section>
     </EditorSection>
   );
 }

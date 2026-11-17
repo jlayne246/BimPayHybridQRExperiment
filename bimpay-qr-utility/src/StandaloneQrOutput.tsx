@@ -81,7 +81,7 @@ export default function StandaloneQrOutput({ payload, logo, merchantName, onOpen
   const buttonClass = "rounded-lg border border-cyan-950 bg-white px-4 py-3 text-sm font-bold text-cyan-950 disabled:cursor-not-allowed disabled:opacity-50";
   return (
     <section aria-label="Standalone QR output" className="mt-5 rounded-lg border border-slate-200 bg-slate-100 p-4">
-      <h3 className="text-sm font-black text-slate-950">Printable QR preview</h3>
+      <h4 className="text-sm font-black text-slate-950">Printable QR preview</h4>
       <p className="text-xs font-semibold text-slate-500">QR only · 2048 × 2048 PNG · 100 × 100 mm PDF</p>
       <div className="mt-3 grid min-h-40 place-items-center rounded-lg border border-slate-200 bg-white p-4">
         <button type="button" aria-label="Open high-resolution QR" title="Open larger QR" disabled={!image} onClick={onOpen} className="max-w-full disabled:cursor-not-allowed">

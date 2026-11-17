@@ -111,10 +111,19 @@ test("standalone panel sits above printable preview and exports QR-only PNG, PDF
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeEnabled();
   const position = await panel.evaluate(element => {
-    const printable = [...document.querySelectorAll("div")].find(node => node.textContent === "Printable QR Payment Card preview")!;
-    return { panelBottom: element.getBoundingClientRect().bottom, printableTop: printable.getBoundingClientRect().top };
+    const printable = document.getElementById("payment-card-preview-title")!;
+    const card = document.querySelector('[aria-labelledby="payment-card-section-title"]')!;
+    return {
+      panelBottom: element.getBoundingClientRect().bottom,
+      optionsTop: card.querySelector("select")!.getBoundingClientRect().top,
+      printableTop: printable.getBoundingClientRect().top,
+    };
   });
-  expect(position.panelBottom).toBeLessThan(position.printableTop);
+  expect(position.panelBottom).toBeLessThan(position.optionsTop);
+  expect(position.optionsTop).toBeLessThan(position.printableTop);
+  await expect(page.getByRole("heading", { name: "QR Code", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "QR Payment Card", exact: true })).toBeVisible();
+  await expect(page.getByText("Your payment QR is ready.", { exact: true })).toHaveCount(0);
   let download = page.waitForEvent("download");
   await panel.getByRole("button", { name: "Download QR as PNG" }).click();
   const pngFile = await download;
