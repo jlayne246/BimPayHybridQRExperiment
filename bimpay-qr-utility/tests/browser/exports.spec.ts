@@ -11,7 +11,11 @@ async function validForm(page: import("@playwright/test").Page) {
 async function generate(page: import("@playwright/test").Page, previewVisible = true) {
   await page.getByRole("button", { name: "Create Payment QR" }).click();
   await expect(page.getByText("QR generated.", { exact: true })).toBeVisible();
-  if (previewVisible) await expect(page.getByAltText(/ preview$/)).toBeVisible();
+  if (previewVisible) {
+    const createCard = page.getByRole("button", { name: "Create a Payment Card" });
+    if (await createCard.count()) await createCard.click();
+    await expect(page.getByAltText(/ preview$/)).toBeVisible();
+  }
 }
 test("real browser renders eight templates and downloads PNG/PDF", async ({ page }) => {
   const errors: string[] = [];
@@ -84,8 +88,8 @@ test("public QR API prepares logos and honours image dimensions and error correc
 
 test("standalone QR dialog downloads a real 2048px PNG and closes with Escape", async ({ page }) => {
   await validForm(page);
-  await expect(page.getByRole("button", { name: "Open high-resolution QR" })).toBeDisabled();
-  await generate(page);
+  await expect(page.getByRole("button", { name: "Open high-resolution QR" })).toHaveCount(0);
+  await generate(page, false);
   await page.getByRole("button", { name: "Open high-resolution QR" }).click();
   const dialog = page.getByRole("dialog", { name: "High-resolution payment QR" });
   await expect(dialog).toBeVisible();
@@ -106,15 +110,11 @@ test("standalone QR dialog downloads a real 2048px PNG and closes with Escape", 
 test("standalone panel sits above printable preview and exports QR-only PNG, PDF and sharing fallback", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await validForm(page);
-  const qrDetails = page.locator('[aria-labelledby="qr-code-section-title"] details');
-  const cardDetails = page.locator('[aria-labelledby="payment-card-section-title"] details');
-  await expect(qrDetails).toHaveJSProperty("open", false);
-  await expect(cardDetails).toHaveJSProperty("open", false);
+  await expect(page.getByRole("region", { name: "QR Code", exact: true })).toHaveCount(0);
   await generate(page, false);
-  await expect(qrDetails).toHaveJSProperty("open", false);
-  await expect(cardDetails).toHaveJSProperty("open", false);
-  await qrDetails.locator("summary").click();
-  await cardDetails.locator("summary").click();
+  await expect(page.getByRole("region", { name: "QR Code", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "QR Payment Card", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Create a Payment Card" }).click();
   const panel = page.getByRole("region", { name: "Standalone QR output" });
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeEnabled();
@@ -134,29 +134,17 @@ test("standalone panel sits above printable preview and exports QR-only PNG, PDF
   await expect(page.getByText("Your payment QR is ready.", { exact: true })).toHaveCount(0);
   const qrSection = page.getByRole("region", { name: "QR Code", exact: true });
   const cardSection = page.getByRole("region", { name: "QR Payment Card", exact: true });
-  const qrSummary = qrSection.locator("summary");
-  const cardSummary = cardSection.locator("summary");
   const qrImage = await panel.getByAltText("Standalone payment QR").getAttribute("src");
-  await expect(cardSection.getByLabel("Paper size")).toBeVisible();
-  await qrSummary.click();
-  await expect(panel).not.toBeVisible();
+  await expect(qrSection.locator("details")).toHaveCount(0);
+  await expect(cardSection.locator("details")).toHaveCount(0);
   await cardSection.getByLabel("Paper size").selectOption("a5");
-  await expect(panel).not.toBeVisible(); // A card settings update must not reopen QR Code.
   await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(qrDetails).toHaveJSProperty("open", false);
-  await expect(cardDetails).toHaveJSProperty("open", true);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(qrDetails).toHaveJSProperty("open", false);
-  await expect(cardDetails).toHaveJSProperty("open", true);
-  await cardSummary.click();
-  await expect(cardSection.getByLabel("Paper size")).not.toBeVisible();
-  await qrSummary.focus();
-  await page.keyboard.press("Enter");
   await expect(panel).toBeVisible();
-  await expect(cardSection.getByLabel("Paper size")).not.toBeVisible();
-  await expect(panel.getByAltText("Standalone payment QR")).toHaveAttribute("src", qrImage!);
-  await cardSummary.click();
   await expect(cardSection.getByLabel("Paper size")).toHaveValue("a5");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(panel).toBeVisible();
+  await expect(cardSection.getByLabel("Paper size")).toBeVisible();
+  await expect(panel.getByAltText("Standalone payment QR")).toHaveAttribute("src", qrImage!);
   await cardSection.getByLabel("Paper size").selectOption("a4");
   let download = page.waitForEvent("download");
   await panel.getByRole("button", { name: "Download QR as PNG" }).click();
@@ -178,3 +166,41 @@ test("standalone panel sits above printable preview and exports QR-only PNG, PDF
     await expect(panel.getByRole("button", { name })).toBeDisabled();
   }
 });
+
+for (const width of [390, 1280]) {
+  test(`QR-first flow reveals the optional card editor and preserves settings at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await validForm(page);
+    const qrSection = page.getByRole("region", { name: "QR Code", exact: true });
+    await expect(qrSection).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "QR Payment Card", exact: true })).toHaveCount(0);
+    await generate(page, false);
+    await expect(qrSection).toBeVisible();
+    await expect(page.getByRole("region", { name: "QR Payment Card", exact: true })).toHaveCount(0);
+    await expect(qrSection.getByText("Example only", { exact: true })).toBeVisible();
+    const sample = qrSection.getByAltText("Example BiMPay Accepted Here payment card");
+    await expect(sample).toBeVisible();
+    await expect.poll(() => sample.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    await qrSection.screenshot({ path: testInfo.outputPath("qr-first-output.png") });
+    await page.getByRole("button", { name: "Create a Payment Card" }).click();
+    const card = page.getByRole("region", { name: "QR Payment Card", exact: true });
+    await expect(card.getByAltText(/ preview$/)).toBeVisible();
+    await card.getByLabel("Paper size").selectOption("a5");
+    await expect(card.locator("details")).toHaveCount(0);
+    await expect(card.getByLabel("Paper size")).toBeVisible();
+    await page.getByRole("button", { name: "Edit Payment Card" }).click();
+    await expect(card.getByLabel("Paper size")).toHaveValue("a5");
+    await expect(card.getByLabel("Paper size")).toBeVisible();
+    await page.getByLabel("Account / merchant number").fill("");
+    await page.getByRole("button", { name: "Create Payment QR" }).click();
+    await expect(page.getByText(/Enter the recipient name, choose a bank and branch/)).toBeVisible();
+    await expect(qrSection).toBeVisible();
+    await page.getByLabel("Account / merchant number").fill("00123");
+    await generate(page, false);
+    await expect(qrSection).toBeVisible();
+    await expect(card.getByLabel("Paper size")).toHaveValue("a5");
+    await page.getByRole("button", { name: "Clear Form" }).click();
+    await expect(qrSection).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "QR Payment Card", exact: true })).toHaveCount(0);
+  });
+}

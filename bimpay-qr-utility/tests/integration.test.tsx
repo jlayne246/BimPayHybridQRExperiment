@@ -32,6 +32,8 @@ function generate() { fireEvent.click(screen.getByRole("button", { name: "Create
 async function ready() {
   generate();
   await screen.findByText("QR generated.");
+  const createCard = screen.queryByRole("button", { name: "Create a Payment Card" });
+  if (createCard) fireEvent.click(createCard);
   await waitFor(() => expect(card).toHaveBeenCalled());
 }
 function deferred<T>() {
@@ -81,10 +83,11 @@ describe("workspace application integration", () => {
     change("Recipient type", "organisation");
     expect(screen.queryByLabelText(/^Give to \/ Cause/)).toBeNull();
     fireEvent.click(screen.getByLabelText("This QR code is for charitable donations"));
-    change("Give to / Cause", "ORGAN APPEAL");
     change("How much will supporters give?", "fixed");
     change("Amount", "50.00");
     await ready();
+    change("Give to / Cause", "ORGAN APPEAL");
+    await waitFor(() => expect(card.mock.lastCall?.[0].donationCause).toBe("ORGAN APPEAL"));
     expect(qr.mock.calls[0][0]).toContain("540550.00");
     expect(card.mock.lastCall?.[0]).toMatchObject({ templateId: "bimpay-fixed", fixedPrice: "BBD $50.00", isDonation: true, donationCause: "ORGAN APPEAL" });
     change("How much will supporters give?", "variable");
