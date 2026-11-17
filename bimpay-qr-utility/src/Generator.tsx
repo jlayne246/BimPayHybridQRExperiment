@@ -87,27 +87,27 @@ interface QrExportTemplate {
 
 const COUNTRY_OPTIONS = [
   { value: "BB", label: "BB — Barbados" },
-  { value: "US", label: "US — United States" },
-  { value: "CA", label: "CA — Canada" },
-  { value: "GB", label: "GB — United Kingdom" },
-  { value: "TT", label: "TT — Trinidad and Tobago" },
-  { value: "JM", label: "JM — Jamaica" },
-  { value: "GY", label: "GY — Guyana" },
-  { value: "LC", label: "LC — Saint Lucia" },
-  { value: "VC", label: "VC — Saint Vincent and the Grenadines" },
-  { value: "AG", label: "AG — Antigua and Barbuda" },
+  // { value: "US", label: "US — United States" },
+  // { value: "CA", label: "CA — Canada" },
+  // { value: "GB", label: "GB — United Kingdom" },
+  // { value: "TT", label: "TT — Trinidad and Tobago" },
+  // { value: "JM", label: "JM — Jamaica" },
+  // { value: "GY", label: "GY — Guyana" },
+  // { value: "LC", label: "LC — Saint Lucia" },
+  // { value: "VC", label: "VC — Saint Vincent and the Grenadines" },
+  // { value: "AG", label: "AG — Antigua and Barbuda" },
 ];
 
 const CURRENCY_OPTIONS = [
   { value: "052", label: "052 — BBD / Barbados Dollar" },
-  { value: "840", label: "840 — USD / US Dollar" },
-  { value: "124", label: "124 — CAD / Canadian Dollar" },
-  { value: "826", label: "826 — GBP / Pound Sterling" },
-  { value: "978", label: "978 — EUR / Euro" },
-  { value: "780", label: "780 — TTD / Trinidad and Tobago Dollar" },
-  { value: "388", label: "388 — JMD / Jamaican Dollar" },
-  { value: "328", label: "328 — GYD / Guyana Dollar" },
-  { value: "951", label: "951 — XCD / East Caribbean Dollar" },
+  // { value: "840", label: "840 — USD / US Dollar" },
+  // { value: "124", label: "124 — CAD / Canadian Dollar" },
+  // { value: "826", label: "826 — GBP / Pound Sterling" },
+  // { value: "978", label: "978 — EUR / Euro" },
+  // { value: "780", label: "780 — TTD / Trinidad and Tobago Dollar" },
+  // { value: "388", label: "388 — JMD / Jamaican Dollar" },
+  // { value: "328", label: "328 — GYD / Guyana Dollar" },
+  // { value: "951", label: "951 — XCD / East Caribbean Dollar" },
 ];
 
 const EMPTY_ACCOUNT_REFERENCE = "";
@@ -307,6 +307,7 @@ async function renderQrTemplatePng({
   outputSize = "original",
   qrPayload = "",
   logo = "",
+  isDonation = false,
 }: {
   templateId: QrExportTemplateId;
   qr: string;
@@ -322,6 +323,7 @@ async function renderQrTemplatePng({
   outputSize?: QrOutputSize;
   qrPayload?: string;
   logo?: string;
+  isDonation?: boolean;
 }): Promise<string> {
   const { width, height } = templateDimensions(templateId);
   const output = outputDimensions(templateId, outputSize);
@@ -329,6 +331,7 @@ async function renderQrTemplatePng({
   const fixedTemplate = templateId.endsWith("fixed");
   const donationTemplate = templateId.endsWith("donations");
   const merchantTemplate = templateId.endsWith("merchant");
+  const fixedDonation = isDonation && fixedTemplate;
   const exportFont = landscape ? "Arial" : '"Montserrat Variable"';
   if (merchantTemplate || (!landscape && (fixedTemplate || donationTemplate))) {
     await document.fonts.load(`700 80px "Montserrat Variable"`);
@@ -352,8 +355,10 @@ async function renderQrTemplatePng({
     if (fixedTemplate && !fixedPrice) {
       throw new Error("Generate a fixed-amount QR to preview or export this template.");
     }
-    if (fixedTemplate && fixedDescription.length > 30) {
-      throw new Error("Description must be 30 characters or fewer, including spaces.");
+    if (fixedTemplate && !fixedDonation && fixedDescription.length > 30) {
+      throw new Error(
+        "Description must be 30 characters or fewer, including spaces."
+      );
     }
     const artwork = await loadImage(`${import.meta.env.BASE_URL}templates/${templateId}.svg`);
     context.drawImage(artwork, 0, 0, width, height);
@@ -402,36 +407,120 @@ async function renderQrTemplatePng({
     }
     if (fixedTemplate) {
       context.save();
+    
       context.fillStyle = "#0114a8";
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.font = `700 56px ${exportFont}`;
-      const description = fixedDescription.trim().toUpperCase();
-      let lines = description ? [description] : [];
-      if (context.measureText(description).width > textWidth) {
-        const breaks = Array.from(description.matchAll(/\s+/g), (match) => match.index);
-        const candidates = breaks.length ? breaks : Array.from({ length: description.length - 1 }, (_, index) => index + 1);
-        const split = candidates.reduce((best, index) => {
-          const widest = (position: number) => Math.max(
-            context.measureText(description.slice(0, position).trim()).width,
-            context.measureText(description.slice(position).trim()).width
+    
+      if (fixedDonation) {
+        const heading = `GIVE ${fixedPrice}`;
+        const entity = merchantName.trim().toUpperCase();
+      
+        const centerY = landscape ? 438 : 312;
+        const maxWidth = textWidth;
+      
+        // Split organisation name into two lines if necessary
+        context.font = `700 56px ${exportFont}`;
+      
+        let entityLines = [entity];
+      
+        if (context.measureText(entity).width > maxWidth) {
+          const words = entity.split(/\s+/);
+      
+          if (words.length > 1) {
+            // Find the most balanced two-line split
+            let bestSplit = 1;
+            let smallestWidth = Infinity;
+      
+            for (let i = 1; i < words.length; i++) {
+              const first = words.slice(0, i).join(" ");
+              const second = words.slice(i).join(" ");
+      
+              const widest = Math.max(
+                context.measureText(first).width,
+                context.measureText(second).width
+              );
+      
+              if (widest < smallestWidth) {
+                smallestWidth = widest;
+                bestSplit = i;
+              }
+            }
+      
+            entityLines = [
+              words.slice(0, bestSplit).join(" "),
+              words.slice(bestSplit).join(" ")
+            ];
+          }
+        }
+      
+        // Centre the entire block vertically
+        const lineSpacing = 75;
+        const totalLines = 2 + entityLines.length;
+        const startY = centerY - ((totalLines - 1) * lineSpacing) / 2;
+      
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+      
+        // Line 1: Donation amount
+        context.font = `700 64px ${exportFont}`;
+        context.fillText(
+          heading,
+          textCenter,
+          startY,
+          maxWidth
+        );
+      
+        // Line 2: TO
+        context.font = `700 48px ${exportFont}`;
+        context.fillText(
+          "TO",
+          textCenter,
+          startY + lineSpacing,
+          maxWidth
+        );
+      
+        // Lines 3–4: Organisation name
+        context.font = `700 56px ${exportFont}`;
+      
+        entityLines.forEach((line, index) => {
+          context.fillText(
+            line,
+            textCenter,
+            startY + (2 + index) * lineSpacing,
+            maxWidth
           );
-          return widest(index) < widest(best) ? index : best;
-        }, candidates[0]);
-        lines = [description.slice(0, split).trim(), description.slice(split).trim()];
+        });
+      } else {
+        context.font = `700 56px ${exportFont}`;
+        const description = fixedDescription.trim().toUpperCase();
+        let lines = description ? [description] : [];
+        if (context.measureText(description).width > textWidth) {
+          const breaks = Array.from(description.matchAll(/\s+/g), (match) => match.index);
+          const candidates = breaks.length ? breaks : Array.from({ length: description.length - 1 }, (_, index) => index + 1);
+          const split = candidates.reduce((best, index) => {
+            const widest = (position: number) => Math.max(
+              context.measureText(description.slice(0, position).trim()).width,
+              context.measureText(description.slice(position).trim()).width
+            );
+            return widest(index) < widest(best) ? index : best;
+          }, candidates[0]);
+          lines = [description.slice(0, split).trim(), description.slice(split).trim()];
+        }
+        const widestLine = Math.max(textWidth, ...lines.map((line) => context.measureText(line).width));
+        context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
+        // Centre the entire description/price block within the artwork's header.
+        const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
+        const gap = lines.length ? 40 : 0;
+        const top = (landscape ? 438 : 312) - (64 + 20 + descriptionHeight + gap + 80) / 2;
+        context.font = `700 64px ${exportFont}`;
+        context.fillText(merchantName.trim().toUpperCase(), textCenter, top + 32, textWidth);
+        context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
+        lines.forEach((line, index) => context.fillText(line, textCenter, top + 84 + 28 + index * 68));
+        context.font = `700 80px ${exportFont}`;
+        context.fillText(fixedPrice, textCenter, top + 84 + descriptionHeight + gap + 40, textWidth);
       }
-      const widestLine = Math.max(textWidth, ...lines.map((line) => context.measureText(line).width));
-      context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
-      // Centre the entire description/price block within the artwork's header.
-      const descriptionHeight = lines.length ? lines.length * 68 - 12 : 0;
-      const gap = lines.length ? 40 : 0;
-      const top = (landscape ? 438 : 312) - (64 + 20 + descriptionHeight + gap + 80) / 2;
-      context.font = `700 64px ${exportFont}`;
-      context.fillText(merchantName.trim().toUpperCase(), textCenter, top + 32, textWidth);
-      context.font = `700 ${56 * textWidth / widestLine}px ${exportFont}`;
-      lines.forEach((line, index) => context.fillText(line, textCenter, top + 84 + 28 + index * 68));
-      context.font = `700 80px ${exportFont}`;
-      context.fillText(fixedPrice, textCenter, top + 84 + descriptionHeight + gap + 40, textWidth);
+    
       context.restore();
     }
     if (donationTemplate) {
@@ -471,6 +560,7 @@ export default function Generator() {
   const organisation = recipientType === "organisation";
   const largeBusiness = recipientType === "large-business";
   const [technicalMode, setTechnicalMode] = useState(() => window.location.hash === "#/customise");
+   const [isDonation, setIsDonation] = useState(false);
   useEffect(() => {
     const onRouteChange = () => setTechnicalMode(window.location.hash === "#/customise");
     window.addEventListener("hashchange", onRouteChange);
@@ -706,6 +796,8 @@ export default function Generator() {
     setGeneratedPayload("");
     setGeneratedFixedPrice("");
     setMessage("Form cleared.");
+    setIsDonation(false);
+    setExportTemplateId("bimpay-accepted");
   }
 
   return (
@@ -751,23 +843,62 @@ export default function Generator() {
 
       <main className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <section className="space-y-6">
-          {!technicalMode && <EditorSection title="Who is this QR for?">
-            <SelectField
-              label="Recipient type"
-              value={recipientType}
-              options={RECIPIENT_TYPES}
-              onChange={(value) => {
-                setRecipientType(value as RecipientType);
-                if (value === "organisation") {
-                  setExportTemplateId(exportTemplateId.startsWith("bimpay-landscape") ? "bimpay-landscape-donations" : "bimpay-donations");
-                }
-                setRawQr("");
-                setGeneratedPayload("");
-                setGeneratedFixedPrice("");
-                setMessage("");
-              }}
-            />
-          </EditorSection>}
+          {!technicalMode && (
+            <EditorSection title="Who is this QR for?">
+              <div className="space-y-4">
+                <SelectField
+                  label="Recipient type"
+                  value={recipientType}
+                  options={RECIPIENT_TYPES}
+                  onChange={(value) => {
+                    setRecipientType(value as RecipientType);
+                    setIsDonation(false);
+
+                    setExportTemplateId((current) => {
+                      if (!current.endsWith("donations")) return current;
+                    
+                      return current.startsWith("bimpay-landscape")
+                        ? "bimpay-landscape"
+                        : "bimpay-accepted";
+                    });
+                              
+                    setRawQr("");
+                    setGeneratedPayload("");
+                    setGeneratedFixedPrice("");
+                    setMessage("");
+                  }}
+                />
+          
+                {organisation && (
+                  <label className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isDonation}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setIsDonation(checked);
+                      
+                        setExportTemplateId((current) => {
+                          const landscape = current.startsWith("bimpay-landscape");
+                      
+                          return checked
+                            ? landscape
+                              ? "bimpay-landscape-donations"
+                              : "bimpay-donations"
+                            : landscape
+                              ? "bimpay-landscape"
+                              : "bimpay-accepted";
+                        });
+                      }}
+                    />
+                    <span className="text-sm font-medium text-slate-700">
+                      This QR code is for charitable donations
+                    </span>
+                  </label>
+                )}
+              </div>
+            </EditorSection>
+          )}
           <EditorSection
             title={technicalMode ? "Payment Behaviour" : "Payment amount"}
             description={technicalMode ? "This separates EMVCo initiation semantics from independently observed payment-app amount behaviour." : undefined}
@@ -781,7 +912,7 @@ export default function Generator() {
                   { value: "variable", label: technicalMode ? "Variable amount" : organisation ? "Supporter enters the amount" : "Customer enters the amount" },
                   { value: "fixed", label: technicalMode ? "Fixed amount" : organisation ? "A set amount" : "A set price" },
                 ]}
-                helper={technicalMode ? 'Observed experimental behaviour: 54 = "***" may prompt for an amount.' : undefined}
+                helper={technicalMode ? '"***" may prompt for an amount.' : undefined}
               />
 
               {amountMode === "fixed" && (
@@ -996,7 +1127,18 @@ export default function Generator() {
             }} />
             {qrLogo && <div className="mt-3 flex items-center gap-3">
               <img src={qrLogo} alt="Uploaded QR logo" className="h-16 w-16 object-contain" />
-              <button type="button" onClick={() => { setQrLogo(""); setRawQr(""); setGeneratedPayload(""); if (logoFileInput.current) logoFileInput.current.value = ""; }}>Remove logo</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setQrLogo("");
+                  setRawQr("");
+                  setGeneratedPayload("");
+                  if (logoFileInput.current) logoFileInput.current.value = "";
+                }}
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-4 focus:ring-red-100 active:bg-red-200"
+              >
+                Remove Logo
+              </button>
             </div>}
             {logoError && <p role="alert" className="mt-2 text-sm text-red-700">{logoError}</p>}
           </EditorSection>
@@ -1035,6 +1177,7 @@ export default function Generator() {
             selectedTemplateId={exportTemplateId}
             sources={qrExportSources}
             onTemplateChange={setExportTemplateId}
+            isDonation={isDonation}
           />
 
           {technicalMode && <><OutputBlock
@@ -1206,6 +1349,7 @@ interface QrTemplateExporterProps {
   selectedTemplateId: QrExportTemplateId;
   sources: QrExportSource[];
   onTemplateChange: (value: QrExportTemplateId) => void;
+  isDonation: boolean;
 }
 
 function QrTemplateExporter({
@@ -1221,7 +1365,8 @@ function QrTemplateExporter({
   selectedSourceId,
   selectedTemplateId,
   sources,
-    onTemplateChange,
+  onTemplateChange,
+  isDonation,
 }: QrTemplateExporterProps) {
   const [exportMessage, setExportMessage] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -1231,9 +1376,23 @@ function QrTemplateExporter({
   const [previewDataUrl, setPreviewDataUrl] = useState("");
   const [renderedPreviewKey, setRenderedPreviewKey] = useState("");
   const [previewMessage, setPreviewMessage] = useState("");
-  const templateId = amountMode === "fixed"
-    ? (selectedTemplateId.startsWith("bimpay-landscape") ? "bimpay-landscape-fixed" : "bimpay-fixed")
-    : selectedTemplateId.endsWith("fixed") ? (selectedTemplateId.startsWith("bimpay-landscape") ? "bimpay-landscape" : "bimpay-accepted") : selectedTemplateId;
+  const isLandscape = selectedTemplateId.startsWith("bimpay-landscape");
+  const donation = recipientType === "organisation" && isDonation;
+  
+  const templateId =
+    amountMode === "fixed"
+      ? isLandscape
+        ? "bimpay-landscape-fixed"
+        : "bimpay-fixed"
+      : donation
+        ? isLandscape
+          ? "bimpay-landscape-donations"
+          : "bimpay-donations"
+        : selectedTemplateId.endsWith("fixed")
+          ? isLandscape
+            ? "bimpay-landscape"
+            : "bimpay-accepted"
+          : selectedTemplateId;
   const selectedTemplate =
     QR_EXPORT_TEMPLATES.find((template) => template.id === templateId) ??
     QR_EXPORT_TEMPLATES[0];
@@ -1247,10 +1406,10 @@ function QrTemplateExporter({
     : `${size === "original" ? "Small sign" : size.toUpperCase()} - ${orientation === "landscape" ? "Landscape" : "Portrait"}`;
   const amountLabel =
     amountMode === "variable" ? `${recipientType === "organisation" ? "Supporter" : "Customer"} enters amount` : `Fixed amount BBD ${amount}`;
-  const descriptionError = selectedTemplate.id.endsWith("fixed") && fixedDescription.length > 30
+  const descriptionError = selectedTemplate.id.endsWith("fixed") && !donation && fixedDescription.length > 30
     ? `Description is ${fixedDescription.length} characters. Remove ${fixedDescription.length - 30} to fit the 30-character limit (including spaces).`
     : "";
-  const previewKey = JSON.stringify([selectedSource.value, selectedTemplate.id, outputSize, donationCause, fixedDescription, fixedPrice, amount, amountMode, merchantCity, merchantName, reference, logo]);
+  const previewKey = JSON.stringify([selectedSource.value, selectedTemplate.id, outputSize, donationCause, fixedDescription, fixedPrice, amount, amountMode, merchantCity, merchantName, reference, logo, donation]);
   const previewIsCurrent = renderedPreviewKey === previewKey;
   const activePreviewDataUrl = selectedSource.qr && !descriptionError && previewIsCurrent ? previewDataUrl : "";
   const previewPlaceholder = descriptionError || (!selectedSource.qr
@@ -1277,6 +1436,7 @@ function QrTemplateExporter({
       outputSize,
       qrPayload: source.value,
       logo,
+      isDonation: donation,
     });
   }
 
@@ -1304,6 +1464,7 @@ function QrTemplateExporter({
       outputSize,
       qrPayload: selectedSource.value,
       logo,
+      isDonation: donation,
     })
       .then((dataUrl) => {
         if (cancelled) return;
@@ -1430,7 +1591,26 @@ function QrTemplateExporter({
               if (layout) onTemplateChange(layout[orientation]);
             }}
           >
-            {TEMPLATE_LAYOUTS.filter((layout) => amountMode === "fixed" ? layout.portrait === "bimpay-fixed" : layout.portrait !== "bimpay-fixed").map((layout) => <option key={layout.portrait} value={layout.portrait}>{layout.label}</option>)}
+            {TEMPLATE_LAYOUTS
+              .filter((layout) => {
+                if (amountMode === "fixed") {
+                  return layout.portrait === "bimpay-fixed";
+                }
+            
+                if (donation) {
+                  return layout.portrait === "bimpay-donations";
+                }
+            
+                return (
+                  layout.portrait !== "bimpay-fixed" &&
+                  layout.portrait !== "bimpay-donations"
+                );
+              })
+              .map((layout) => (
+                <option key={layout.portrait} value={layout.portrait}>
+                  {layout.label}
+                </option>
+              ))}
           </select>
         </label>
         <fieldset className="min-w-0">
@@ -1458,7 +1638,7 @@ function QrTemplateExporter({
         </select>
       </label>
 
-      {selectedTemplate.id.endsWith("fixed") && (
+      {selectedTemplate.id.endsWith("fixed") && !donation && (
         <label className="mt-5 block">
           <span className="mb-2 block text-sm font-semibold text-slate-700">{recipientType === "organisation" ? "Payment description" : "Item / Description"}</span>
           <input
