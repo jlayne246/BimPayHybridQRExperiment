@@ -603,6 +603,7 @@ export default function Generator() {
     requestTimestamp: generateTimestamp(),
   });
 
+  const [generatedFingerprint, setGeneratedFingerprint] = useState("");
   const [rawQr, setRawQr] = useState("");
   const [generatedPayload, setGeneratedPayload] = useState("");
   const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
@@ -655,6 +656,23 @@ export default function Generator() {
 
   const amountTagValue = amountMode === "variable" ? "***" : coreFields.amount;
 
+  const currentFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        fields: emvFields.filter((field) => field.tag !== "80"),
+        privateGui: privateFields.gui,
+        logo: qrLogo,
+      }),
+    [emvFields, privateFields.gui, qrLogo]
+  );
+    
+  const qrIsCurrent =
+    Boolean(generatedPayload) &&
+    generatedFingerprint === currentFingerprint;
+
+  const currentFingerprintRef = useRef(currentFingerprint);
+  currentFingerprintRef.current = currentFingerprint;
+
   const emvFields = useMemo<EmvField[]>(() => {
     return [
       { tag: "00", value: coreFields.payloadFormat },
@@ -676,8 +694,8 @@ export default function Generator() {
       id: "raw",
       label: "Raw EMV payload",
       description: "EMVCo payload for compatible payment scanners.",
-      value: generatedPayload,
-      qr: rawQr,
+      value: qrIsCurrent ? generatedPayload : "",
+      qr: qrIsCurrent ? rawQr : "",
     },
   ];
 
@@ -698,6 +716,8 @@ export default function Generator() {
   }
 
   async function generateQrs(): Promise<void> {
+    const fingerprintAtStart = currentFingerprint;
+    
     try {
       const timestamp = generateTimestamp();
       const fieldsForGeneration = emvFields.map((field) => field.tag === "80" ? {
@@ -723,10 +743,22 @@ export default function Generator() {
 
       setMessage("Generating QR codes...");
 
-      const rawQrDataUrl = await renderPaymentQr(payloadForGeneration, 380, qrLogo, 4);
-
+      const rawQrDataUrl = await renderPaymentQr(
+        payloadForGeneration,
+        380,
+        qrLogo,
+        4
+      );
+      
+      // The form changed while the QR was being generated.
+      if (currentFingerprintRef.current !== fingerprintAtStart) {
+        setMessage("Payment details changed. Generate the QR again.");
+        return;
+      }
+      
       setRawQr(rawQrDataUrl);
       setGeneratedPayload(payloadForGeneration);
+      setGeneratedFingerprint(fingerprintAtStart);
       setPrivateFields((current) => ({ ...current, requestTimestamp: timestamp }));
       const currencyCode = CURRENCY_OPTIONS.find((option) => option.value === coreFields.currency)?.label.match(/\b[A-Z]{3}\b/)?.[0] ?? coreFields.currency;
       setGeneratedFixedPrice(amountMode === "fixed" ? `${currencyCode} $${Number(coreFields.amount).toFixed(2)}` : "");
@@ -798,6 +830,7 @@ export default function Generator() {
     setMessage("Form cleared.");
     setIsDonation(false);
     setExportTemplateId("bimpay-accepted");
+    setGeneratedFingerprint("");
   }
 
   return (
@@ -1142,6 +1175,17 @@ export default function Generator() {
             </div>}
             {logoError && <p role="alert" className="mt-2 text-sm text-red-700">{logoError}</p>}
           </EditorSection>
+
+          {generatedPayload && !qrIsCurrent && (
+            <div
+              role="alert"
+              className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900"
+            >
+              Payment details have changed. Generate the QR again
+              before downloading or sharing your payment sign.
+            </div>
+          )}
+          
           <button
             type="button"
             onClick={generateQrs}
@@ -1163,7 +1207,7 @@ export default function Generator() {
             logo={qrLogo}
             recipientType={technicalMode ? undefined : recipientType}
             technicalMode={technicalMode}
-            fixedPrice={generatedFixedPrice}
+            fixedPrice={qrIsCurrent ? generatedFixedPrice : ""}
             amount={coreFields.amount}
             amountMode={amountMode}
             merchantCity={coreFields.merchantCity}
