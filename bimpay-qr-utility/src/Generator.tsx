@@ -756,10 +756,11 @@ export default function Generator() {
         4
       );
 
-      if (
-        generationId !== generationIdRef.current ||
-        currentFingerprintRef.current !== fingerprintAtStart
-      ) {
+      if (generationId !== generationIdRef.current) {
+        return;
+      }
+      
+      if (currentFingerprintRef.current !== fingerprintAtStart) {
         setMessage("Payment details changed. Generate the QR again.");
         return;
       }
@@ -778,6 +779,7 @@ export default function Generator() {
         if (generationId === generationIdRef.current) {
           setGenerating(false);
       }
+    }
   }
 
   function copyText(value: string): void {
@@ -791,6 +793,8 @@ export default function Generator() {
   }
 
   function resetToDefaults(): void {
+    generationIdRef.current += 1;
+    setGenerating(false);
     setRecipientType("small-medium-business");
     setInstitutionBic("");
     setBranchIndex("");
@@ -906,9 +910,9 @@ export default function Generator() {
                         : "bimpay-accepted";
                     });
                               
-                    setRawQr("");
-                    setGeneratedPayload("");
-                    setGeneratedFixedPrice("");
+                    // setRawQr("");
+                    // setGeneratedPayload("");
+                    // setGeneratedFixedPrice("");
                     setMessage("");
                   }}
                 />
@@ -1175,8 +1179,8 @@ export default function Generator() {
                 });
                 setQrLogo(await prepareQrLogo(dataUrl));
                 setLogoError("");
-                setRawQr("");
-                setGeneratedPayload("");
+                // setRawQr("");
+                // setGeneratedPayload("");
               } catch {
                 setLogoError("Could not load this image. Choose another file.");
               }
@@ -1187,8 +1191,8 @@ export default function Generator() {
                 type="button"
                 onClick={() => {
                   setQrLogo("");
-                  setRawQr("");
-                  setGeneratedPayload("");
+                  // setRawQr("");
+                  // setGeneratedPayload("");
                   if (logoFileInput.current) logoFileInput.current.value = "";
                 }}
                 className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-4 focus:ring-red-100 active:bg-red-200"
