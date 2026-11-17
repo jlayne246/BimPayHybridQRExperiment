@@ -81,3 +81,24 @@ test("public QR API prepares logos and honours image dimensions and error correc
   }, modulePath);
   expect(result).toEqual({ plainWidth: 512, width: 640, height: 640, logoWidth: 102, logoHeight: 52, equivalent: true });
 });
+
+test("standalone QR dialog downloads a real 2048px PNG and closes with Escape", async ({ page }) => {
+  await validForm(page);
+  await expect(page.getByRole("button", { name: "Open high-resolution QR" })).toBeDisabled();
+  await generate(page);
+  await page.getByRole("button", { name: "Open high-resolution QR" }).click();
+  const dialog = page.getByRole("dialog", { name: "High-resolution payment QR" });
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.getByAltText("High-resolution payment QR").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(2048);
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download QR PNG" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("example-shop-qr-2048.png");
+  const png = await readFile((await file.path())!);
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([2048, 2048]);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open high-resolution QR" })).toBeFocused();
+  await page.getByLabel("Account / merchant number").fill("00999");
+  await expect(page.getByRole("button", { name: "Open high-resolution QR" })).toBeDisabled();
+});

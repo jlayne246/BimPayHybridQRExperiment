@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import StandaloneQrDialog from "./StandaloneQrDialog";
 import { BIMPAY_GUI, BIMPAY_SCHEME, buildBiMPayFields, buildMerchantAccount, buildAdditionalData, buildPrivateMetadata, buildEmvPayload, generateTimestamp, isValidAmount, renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
 import type { EmvField, CoreFields, MerchantAccountFields, AdditionalDataFields, PrivateFields } from "bimpay-qr-generator";
 import { renderPaymentCard, exportPaymentCardPdf, QR_OUTPUT_SIZES, outputDimensions, templateDimensions } from "bimpay-payment-cards";
@@ -160,6 +161,7 @@ export default function Generator() {
 
   const [generatedFingerprint, setGeneratedFingerprint] = useState("");
   const [rawQr, setRawQr] = useState("");
+  const [showStandaloneQr, setShowStandaloneQr] = useState(false);
   const [generatedPayload, setGeneratedPayload] = useState("");
   const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
   const [message, setMessage] = useState("");
@@ -227,6 +229,10 @@ export default function Generator() {
   const qrIsCurrent =
     Boolean(generatedPayload) &&
     generatedFingerprint === currentFingerprint;
+
+  useEffect(() => {
+    if (!qrIsCurrent) setShowStandaloneQr(false);
+  }, [qrIsCurrent]);
 
   const generationIdRef = useRef(0);
   const [generating, setGenerating] = useState(false);
@@ -801,6 +807,14 @@ export default function Generator() {
             </p>
           )}
 
+          <button type="button" disabled={!qrIsCurrent} onClick={() => setShowStandaloneQr(true)}
+            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">
+            Open high-resolution QR
+          </button>
+          {showStandaloneQr && qrIsCurrent && <StandaloneQrDialog
+            payload={generatedPayload} logo={qrLogo} merchantName={coreFields.merchantName}
+            fixedPrice={generatedFixedPrice} onClose={() => setShowStandaloneQr(false)}
+          />}
         </section>
 
         <section className="space-y-6">

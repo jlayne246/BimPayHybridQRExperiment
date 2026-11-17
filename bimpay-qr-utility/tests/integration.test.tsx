@@ -175,3 +175,37 @@ it("does not share a pending raw QR after its technical view unmounts", async ()
   expect(share).not.toHaveBeenCalled();
   expect(copy).not.toHaveBeenCalled();
 });
+
+function mockDialog() {
+  // jsdom has no native dialog lifecycle; actual behaviour is checked in Chromium.
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+}
+it("renders a standalone 2048px QR from the current payload and preserves flyer-only validity", async () => {
+  mockDialog(); await validForm(); await ready();
+  fireEvent.click(screen.getByRole("button", { name: "Open high-resolution QR" }));
+  await screen.findByAltText("High-resolution payment QR");
+  expect(qr).toHaveBeenCalledWith(qr.mock.calls[0][0], 2048, "", 4);
+  change("Paper size", "a5");
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    expect(this.download).toBe("example-shop-qr-2048.png");
+    expect(this.href).toBe("data:image/png;base64,qr");
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Download QR PNG" }));
+  expect(click).toHaveBeenCalledOnce();
+  change("Account / merchant number", "00999");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect((screen.getByRole("button", { name: "Open high-resolution QR" }) as HTMLButtonElement).disabled).toBe(true);
+});
+it("discards a pending standalone QR when payment details change", async () => {
+  mockDialog(); await validForm(); await ready();
+  const pending = deferred<string>();
+  qr.mockImplementation((_payload, width) => width === 2048 ? pending.promise : Promise.resolve("data:image/png;base64,qr"));
+  fireEvent.click(screen.getByRole("button", { name: "Open high-resolution QR" }));
+  expect((screen.getByRole("button", { name: "Download QR PNG" }) as HTMLButtonElement).disabled).toBe(true);
+  change("Business name", "NEW SHOP");
+  await act(async () => pending.resolve("old-standalone-qr"));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByAltText("High-resolution payment QR")).toBeNull();
+});
