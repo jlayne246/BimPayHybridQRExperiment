@@ -69,3 +69,10 @@ Final verification on the refactor branch:
 - `git diff --check` passes; the original prototype and banking directory have no changes.
 
 No unresolved implementation blockers were found. Browser/print rasterisation differences and experimental payment-app compatibility remain the limitations described in the package READMEs. Packages were packed locally for verification, not published.
+
+
+## Deployment follow-up
+
+The first Vercel deployment exposed a missing build entry point: the existing project runs `npm run build` inside `bimpay-qr-utility`, whereas the initial refactor only built package artifacts through the repository-root command. Package exports therefore pointed at absent JS/declaration files on a clean deployment, causing TS2307 and subsequent type-inference errors.
+
+The utility now has a `prebuild` hook that invokes the repository's `build:packages` command before its own TypeScript/Vite build. The root `build` command delegates to the utility to avoid building libraries twice. This preserves the existing Vercel app-root configuration and does not require committing generated artifacts or changing package exports. See the utility README for the Vercel outside-root source setting.

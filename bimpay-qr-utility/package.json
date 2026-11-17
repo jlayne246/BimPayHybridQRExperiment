@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5180",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4180"
+    "preview": "vite preview --host 127.0.0.1 --port 4180",
+    "prebuild": "npm --prefix .. run build:packages"
   },
   "dependencies": {
     "@fontsource-variable/montserrat": "5.3.0",

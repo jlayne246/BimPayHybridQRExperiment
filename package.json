@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "build:packages": "npm run build -w bimpay-qr-generator && npm run build -w bimpay-payment-cards",
-    "build": "npm run build:packages && npm run build -w bimpay-qr-utility",
+    "build": "npm run build -w bimpay-qr-utility",
     "test": "vitest run",
     "test:browser": "npm run build:packages && playwright test",
     "dev": "npm run build:packages && npm run dev -w bimpay-qr-utility",

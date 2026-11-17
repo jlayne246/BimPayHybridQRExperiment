@@ -19,6 +19,12 @@ npm run build # from repository root
 
 Publish the contents of `bimpay-qr-utility/dist/` on any static HTTPS host. No API, database, account, server secrets, or environment variables are required. `base: "./"` supports deployment in a subdirectory. The built static files can be hosted independently; source builds now use the two sibling workspace packages.
 
+### Vercel
+
+For the utility's existing Vercel project, keep Root Directory set to `bimpay-qr-utility`, Build Command `npm run build`, and Output Directory `dist`. Enable **Include source files outside of the Root Directory in the Build Step** so the sibling workspace packages are available. Install dependencies using the repository's root workspace lockfile; Vercel's npm workspace detection normally handles this automatically (an explicit install command is `npm --prefix .. ci`).
+
+The utility's `prebuild` script builds both library packages before TypeScript checks or Vite run. This is required on clean deployments because package exports point to generated `dist/` JavaScript and declarations, which are not committed. Running `npm run build` from either the repository root or the utility directory now builds the packages first. The additional implicit-any errors seen when package declarations are absent are consequences of the unresolved imports.
+
 ## Behaviour
 
 - The default page uses merchant-friendly labels for business details, receiving account, payment amount, and printing/sharing. Open `#/customise` using **Customise / Experiment** for the detailed QR fields and payload inspection; **Back to QR creator** returns to the simple form. Both views share in-memory values, and hash routes work on static hosts without routing rewrites.
