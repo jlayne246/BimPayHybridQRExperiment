@@ -656,23 +656,6 @@ export default function Generator() {
 
   const amountTagValue = amountMode === "variable" ? "***" : coreFields.amount;
 
-  const currentFingerprint = useMemo(
-    () =>
-      JSON.stringify({
-        fields: emvFields.filter((field) => field.tag !== "80"),
-        privateGui: privateFields.gui,
-        logo: qrLogo,
-      }),
-    [emvFields, privateFields.gui, qrLogo]
-  );
-    
-  const qrIsCurrent =
-    Boolean(generatedPayload) &&
-    generatedFingerprint === currentFingerprint;
-
-  const currentFingerprintRef = useRef(currentFingerprint);
-  currentFingerprintRef.current = currentFingerprint;
-
   const emvFields = useMemo<EmvField[]>(() => {
     return [
       { tag: "00", value: coreFields.payloadFormat },
@@ -688,6 +671,26 @@ export default function Generator() {
       { tag: "80", value: privateTemplate },
     ];
   }, [coreFields, merchantAccountTemplate, additionalDataTemplate, privateTemplate, amountTagValue]);
+
+  const currentFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        fields: emvFields.filter((field) => field.tag !== "80"),
+        privateGui: privateFields.gui,
+        logo: qrLogo,
+      }),
+    [emvFields, privateFields.gui, qrLogo]
+  );
+    
+  const qrIsCurrent =
+    Boolean(generatedPayload) &&
+    generatedFingerprint === currentFingerprint;
+
+  const generationIdRef = useRef(0);
+  const [generating, setGenerating] = useState(false);
+
+  const currentFingerprintRef = useRef(currentFingerprint);
+  currentFingerprintRef.current = currentFingerprint;
 
   const qrExportSources: QrExportSource[] = [
     {
@@ -716,7 +719,10 @@ export default function Generator() {
   }
 
   async function generateQrs(): Promise<void> {
+    const generationId = ++generationIdRef.current;
     const fingerprintAtStart = currentFingerprint;
+    
+    setGenerating(true);
     
     try {
       const timestamp = generateTimestamp();
@@ -749,9 +755,11 @@ export default function Generator() {
         qrLogo,
         4
       );
-      
-      // The form changed while the QR was being generated.
-      if (currentFingerprintRef.current !== fingerprintAtStart) {
+
+      if (
+        generationId !== generationIdRef.current ||
+        currentFingerprintRef.current !== fingerprintAtStart
+      ) {
         setMessage("Payment details changed. Generate the QR again.");
         return;
       }
@@ -766,7 +774,10 @@ export default function Generator() {
     } catch (error) {
       console.error(error);
       setMessage(error instanceof Error ? error.message : "Could not generate QR codes.");
-    }
+    } finally {
+        if (generationId === generationIdRef.current) {
+          setGenerating(false);
+      }
   }
 
   function copyText(value: string): void {
@@ -965,6 +976,18 @@ export default function Generator() {
                 />
               )}
             </div>
+            <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+              {amountMode === "fixed"
+                ? `This QR will request a fixed payment of BBD $${Number(coreFields.amount || 0).toFixed(2)}.`
+                : "The payer will be prompted to enter an amount if their payment app supports variable-amount QR codes."}
+            </div>
+            {organisation && isDonation && (
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Donation QR codes identify the recipient and payment
+                purpose but do not verify charitable registration,
+                eligibility for tax relief, or the intended use of funds.
+              </p>
+            )}
           </EditorSection>
 
           <EditorSection
@@ -1176,6 +1199,24 @@ export default function Generator() {
             {logoError && <p role="alert" className="mt-2 text-sm text-red-700">{logoError}</p>}
           </EditorSection>
 
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-lg">⚠️</span>
+          
+              <div>
+                <p className="text-sm font-bold text-amber-950">
+                  Verify payment details
+                </p>
+          
+                <p className="mt-1 text-sm leading-6 text-amber-900">
+                  Ensure the recipient name, financial institution,
+                  branch and receiving account number are correct.
+                  This utility does not verify account ownership.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {generatedPayload && !qrIsCurrent && (
             <div
               role="alert"
@@ -1189,15 +1230,28 @@ export default function Generator() {
           <button
             type="button"
             onClick={generateQrs}
-            className="w-full rounded-lg bg-cyan-950 px-5 py-4 text-sm font-black text-white shadow-lg transition hover:bg-slate-800"
+            disabled={generating}
+            className="w-full rounded-lg bg-cyan-950 px-5 py-4 text-sm font-black text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {technicalMode ? "Generate QR Codes" : "Create Payment QR"}
+            {generating
+              ? "Generating QR..."
+              : technicalMode
+                ? "Generate QR Codes"
+                : "Create Payment QR"}
           </button>
 
           {message && (
             <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700 shadow-sm">
               {message}
             </div>
+          )}
+
+          {qrIsCurrent && (
+            <p className="mt-3 text-xs leading-5 text-slate-600">
+              Before displaying or sharing this QR, scan it with a
+              compatible payment app and confirm that the recipient
+              and payment details are correct.
+            </p>
           )}
 
         </section>
@@ -1227,9 +1281,9 @@ export default function Generator() {
           {technicalMode && <><OutputBlock
             title="Raw EMV Payload"
             description="Generated merchant-presented payload."
-            value={generatedPayload}
-            qr={rawQr}
-            onCopy={() => copyText(generatedPayload)}
+            value={qrIsCurrent ? generatedPayload : ""}
+            qr={qrIsCurrent ? rawQr : ""}
+            onCopy={() => copyText(qrIsCurrent ? generatedPayload : "")}
           />
 
           <EditorSection
