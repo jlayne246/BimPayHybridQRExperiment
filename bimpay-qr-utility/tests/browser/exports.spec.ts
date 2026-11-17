@@ -111,7 +111,7 @@ test("standalone panel sits above printable preview and exports QR-only PNG, PDF
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeEnabled();
   const position = await panel.evaluate(element => {
-    const printable = [...document.querySelectorAll("div")].find(node => node.textContent === "Printable QR preview")!;
+    const printable = [...document.querySelectorAll("div")].find(node => node.textContent === "Printable QR Payment Card preview")!;
     return { panelBottom: element.getBoundingClientRect().bottom, printableTop: printable.getBoundingClientRect().top };
   });
   expect(position.panelBottom).toBeLessThan(position.printableTop);
