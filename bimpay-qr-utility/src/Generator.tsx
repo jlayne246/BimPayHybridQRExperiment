@@ -1034,20 +1034,15 @@ function QrTemplateExporter({
   onOpenStandaloneQr,
   isDonation,
 }: QrTemplateExporterProps) {
-  const [qrOpen, setQrOpen] = useState(false);
   const [cardRequested, setCardRequested] = useState(false);
-  const [cardOpen, setCardOpen] = useState(false);
   const qrSection = useRef<HTMLElement>(null);
   const cardSection = useRef<HTMLElement>(null);
-  const cardSummary = useRef<HTMLElement>(null);
+  const cardHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (!generationRevision) {
-      setQrOpen(false);
       setCardRequested(false);
-      setCardOpen(false);
       return;
     }
-    setQrOpen(true);
     if (window.innerWidth < 768) {
       const frame = requestAnimationFrame(() => qrSection.current?.scrollIntoView?.({
         behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start",
@@ -1058,9 +1053,8 @@ function QrTemplateExporter({
 
   function openPaymentCard() {
     setCardRequested(true);
-    setCardOpen(true);
     requestAnimationFrame(() => {
-      cardSummary.current?.focus({ preventScroll: true });
+      cardHeading.current?.focus({ preventScroll: true });
       cardSection.current?.scrollIntoView?.({
         behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start",
       });
@@ -1270,11 +1264,9 @@ function QrTemplateExporter({
     <EditorSection
       title="Print and Share"
     >
-      <section ref={qrSection} aria-labelledby="qr-code-section-title">
-        <details open={qrOpen} onToggle={event => setQrOpen(event.currentTarget.open)}>
-          <summary className="cursor-pointer text-slate-950">
-            <h3 id="qr-code-section-title" className="inline text-lg font-bold">QR Code</h3>
-          </summary>
+      {!generationRevision && <p className="text-sm text-slate-600">Create your payment QR to see download and sharing options.</p>}
+      <section ref={qrSection} hidden={!generationRevision} aria-labelledby="qr-code-section-title">
+          <h3 id="qr-code-section-title" className="text-lg font-bold text-slate-950">QR Code</h3>
           <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
           <div className="mt-5 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
             <figure className="w-24 shrink-0">
@@ -1289,14 +1281,10 @@ function QrTemplateExporter({
               </button>
             </div>
           </div>
-        </details>
       </section>
 
       <section ref={cardSection} hidden={!cardRequested} aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
-        <details open={cardOpen} onToggle={event => setCardOpen(event.currentTarget.open)}>
-          <summary ref={cardSummary} className="cursor-pointer text-slate-950">
-            <h3 id="payment-card-section-title" className="inline text-lg font-bold">QR Payment Card</h3>
-          </summary>
+          <h3 ref={cardHeading} tabIndex={-1} id="payment-card-section-title" className="text-lg font-bold text-slate-950">QR Payment Card</h3>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-2 block text-sm font-semibold text-slate-700">Template</span>
@@ -1457,7 +1445,6 @@ function QrTemplateExporter({
           {exportMessage}
         </div>
       )}
-        </details>
       </section>
     </EditorSection>
   );
