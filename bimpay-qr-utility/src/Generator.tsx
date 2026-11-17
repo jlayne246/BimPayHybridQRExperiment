@@ -414,7 +414,7 @@ async function renderQrTemplatePng({
     
       if (fixedDonation) {
         const heading = `GIVE ${fixedPrice}`;
-        const entity = merchantName.trim().toUpperCase();
+        const entity = (donationCause.trim() || merchantName.trim()).toUpperCase();
       
         const centerY = landscape ? 438 : 312;
         const maxWidth = textWidth;
@@ -1654,16 +1654,22 @@ function QrTemplateExporter({
         </label>
       )}
 
-      {selectedTemplate.id.endsWith("donations") && (
+      {donation && (
         <label className="mt-5 block">
-          <span className="mb-2 block text-sm font-semibold text-slate-700">Give to / Cause</span>
+          <span className="mb-2 block text-sm font-semibold text-slate-700">
+            Give to / Cause
+          </span>
           <input
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm"
             value={donationCause}
             maxLength={30}
-            onChange={(event) => setDonationCause(event.target.value.slice(0, 30))}
+            onChange={(event) =>
+              setDonationCause(event.target.value.slice(0, 30))
+            }
           />
-          <span className="mt-1 block text-xs text-slate-500">{donationCause.length}/30</span>
+          <span className="mt-1 block text-xs text-slate-500">
+            {donationCause.length}/30
+          </span>
         </label>
       )}
 
