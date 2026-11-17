@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import StandaloneQrDialog from "./StandaloneQrDialog";
 import StandaloneQrOutput from "./StandaloneQrOutput";
+import paymentCardExample from "./assets/payment-card-example.png";
 import { BIMPAY_GUI, BIMPAY_SCHEME, buildBiMPayFields, buildMerchantAccount, buildAdditionalData, buildPrivateMetadata, buildEmvPayload, generateTimestamp, isValidAmount, renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
 import type { EmvField, CoreFields, MerchantAccountFields, AdditionalDataFields, PrivateFields } from "bimpay-qr-generator";
 import { renderPaymentCard, exportPaymentCardPdf, QR_OUTPUT_SIZES, outputDimensions, templateDimensions } from "bimpay-payment-cards";
@@ -164,6 +165,7 @@ export default function Generator() {
   const [rawQr, setRawQr] = useState("");
   const [showStandaloneQr, setShowStandaloneQr] = useState(false);
   const [generatedPayload, setGeneratedPayload] = useState("");
+  const [generationRevision, setGenerationRevision] = useState(0);
   const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
   const [message, setMessage] = useState("");
   const [amountMode, setAmountMode] = useState<AmountMode>("variable");
@@ -317,6 +319,7 @@ export default function Generator() {
       setRawQr(rawQrDataUrl);
       setGeneratedPayload(payloadForGeneration);
       setGeneratedFingerprint(fingerprintAtStart);
+      setGenerationRevision(current => current + 1);
       setPrivateFields((current) => ({ ...current, requestTimestamp: timestamp }));
       const currencyCode = CURRENCY_OPTIONS.find((option) => option.value === coreFields.currency)?.label.match(/\b[A-Z]{3}\b/)?.[0] ?? coreFields.currency;
       setGeneratedFixedPrice(amountMode === "fixed" ? `${currencyCode} $${Number(coreFields.amount).toFixed(2)}` : "");
@@ -391,6 +394,7 @@ export default function Generator() {
     setAdvancedMode(false);
     setRawQr("");
     setGeneratedPayload("");
+    setGenerationRevision(0);
     setGeneratedFixedPrice("");
     setMessage("Form cleared.");
     setIsDonation(false);
@@ -816,6 +820,7 @@ export default function Generator() {
 
         <section className="space-y-6">
           <QrTemplateExporter
+            generationRevision={generationRevision}
             logo={qrLogo}
             recipientType={technicalMode ? undefined : recipientType}
             technicalMode={technicalMode}
@@ -993,6 +998,7 @@ function TemplatePreview({ title, value }: TemplatePreviewProps) {
 }
 
 interface QrTemplateExporterProps {
+  generationRevision: number;
   logo: string;
   recipientType?: RecipientType;
   technicalMode?: boolean;
@@ -1011,6 +1017,7 @@ interface QrTemplateExporterProps {
 }
 
 function QrTemplateExporter({
+  generationRevision,
   logo,
   recipientType = "small-medium-business",
   technicalMode = false,
@@ -1027,7 +1034,38 @@ function QrTemplateExporter({
   onOpenStandaloneQr,
   isDonation,
 }: QrTemplateExporterProps) {
-  const [outputsInitiallyOpen] = useState(() => window.innerWidth >= 768);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [cardRequested, setCardRequested] = useState(false);
+  const [cardOpen, setCardOpen] = useState(false);
+  const qrSection = useRef<HTMLElement>(null);
+  const cardSection = useRef<HTMLElement>(null);
+  const cardSummary = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!generationRevision) {
+      setQrOpen(false);
+      setCardRequested(false);
+      setCardOpen(false);
+      return;
+    }
+    setQrOpen(true);
+    if (window.innerWidth < 768) {
+      const frame = requestAnimationFrame(() => qrSection.current?.scrollIntoView?.({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start",
+      }));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [generationRevision]);
+
+  function openPaymentCard() {
+    setCardRequested(true);
+    setCardOpen(true);
+    requestAnimationFrame(() => {
+      cardSummary.current?.focus({ preventScroll: true });
+      cardSection.current?.scrollIntoView?.({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start",
+      });
+    });
+  }
   const [exportMessage, setExportMessage] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [donationCause, setDonationCause] = useState("");
@@ -1114,7 +1152,7 @@ function QrTemplateExporter({
   useEffect(() => {
     let cancelled = false;
 
-    if (!selectedSource.qr) {
+    if (!selectedSource.qr || !cardRequested) {
       return () => {
         cancelled = true;
       };
@@ -1149,6 +1187,7 @@ function QrTemplateExporter({
       cancelled = true;
     };
   }, [
+    cardRequested,
     previewKey,
     logo,
     outputSize,
@@ -1231,18 +1270,31 @@ function QrTemplateExporter({
     <EditorSection
       title="Print and Share"
     >
-      <section aria-labelledby="qr-code-section-title">
-        <details open={outputsInitiallyOpen}>
+      <section ref={qrSection} aria-labelledby="qr-code-section-title">
+        <details open={qrOpen} onToggle={event => setQrOpen(event.currentTarget.open)}>
           <summary className="cursor-pointer text-slate-950">
             <h3 id="qr-code-section-title" className="inline text-lg font-bold">QR Code</h3>
           </summary>
           <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
+          <div className="mt-5 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
+            <figure className="w-24 shrink-0">
+              <img src={paymentCardExample} alt="Example BiMPay Accepted Here payment card" width={240} height={360} className="h-auto w-full rounded" />
+              <figcaption className="mt-1 text-center text-xs text-slate-500">Example only</figcaption>
+            </figure>
+            <div>
+              <p className="text-sm text-slate-600">Turn your QR into a printable payment card for your counter, event or fundraiser.</p>
+              <button type="button" disabled={!selectedSource.qr} onClick={openPaymentCard}
+                className="mt-3 rounded-lg bg-cyan-950 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                {cardRequested ? "Edit Payment Card" : "Create a Payment Card"}
+              </button>
+            </div>
+          </div>
         </details>
       </section>
 
-      <section aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
-        <details open={outputsInitiallyOpen}>
-          <summary className="cursor-pointer text-slate-950">
+      <section ref={cardSection} hidden={!cardRequested} aria-labelledby="payment-card-section-title" className="mt-8 border-t border-slate-200 pt-6">
+        <details open={cardOpen} onToggle={event => setCardOpen(event.currentTarget.open)}>
+          <summary ref={cardSummary} className="cursor-pointer text-slate-950">
             <h3 id="payment-card-section-title" className="inline text-lg font-bold">QR Payment Card</h3>
           </summary>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
