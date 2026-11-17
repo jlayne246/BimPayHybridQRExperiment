@@ -102,3 +102,36 @@ test("standalone QR dialog downloads a real 2048px PNG and closes with Escape", 
   await page.getByLabel("Account / merchant number").fill("00999");
   await expect(page.getByRole("button", { name: "Open high-resolution QR" })).toBeDisabled();
 });
+
+test("standalone panel sits above printable preview and exports QR-only PNG, PDF and sharing fallback", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await validForm(page);
+  await generate(page);
+  const panel = page.getByRole("region", { name: "Standalone QR output" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeEnabled();
+  const position = await panel.evaluate(element => {
+    const printable = [...document.querySelectorAll("div")].find(node => node.textContent === "Printable QR preview")!;
+    return { panelBottom: element.getBoundingClientRect().bottom, printableTop: printable.getBoundingClientRect().top };
+  });
+  expect(position.panelBottom).toBeLessThan(position.printableTop);
+  let download = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Download QR as PNG" }).click();
+  const pngFile = await download;
+  const png = await readFile((await pngFile.path())!);
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([2048, 2048]);
+  download = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Download QR as PDF" }).click();
+  const pdfFile = await download;
+  const pdf = await PDFDocument.load(await readFile((await pdfFile.path())!));
+  expect(pdf.getPages()[0].getWidth()).toBeCloseTo(100 * 72 / 25.4);
+  expect(pdf.getPages()[0].getHeight()).toBeCloseTo(100 * 72 / 25.4);
+  await page.evaluate(() => Object.defineProperty(navigator, "share", { configurable: true, value: undefined }));
+  download = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Share QR image" }).click();
+  expect((await download).suggestedFilename()).toBe("example-shop-qr-2048.png");
+  await page.getByLabel("Account / merchant number").fill("00999");
+  for (const name of ["Download QR as PNG", "Download QR as PDF", "Share QR image"]) {
+    await expect(panel.getByRole("button", { name })).toBeDisabled();
+  }
+});

@@ -15,7 +15,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "bimpay-qr-generator": "*",
-    "bimpay-payment-cards": "*"
+    "bimpay-payment-cards": "*",
+    "pdf-lib": "1.17.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",

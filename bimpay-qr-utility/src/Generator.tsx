@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import StandaloneQrDialog from "./StandaloneQrDialog";
+import StandaloneQrOutput from "./StandaloneQrOutput";
 import { BIMPAY_GUI, BIMPAY_SCHEME, buildBiMPayFields, buildMerchantAccount, buildAdditionalData, buildPrivateMetadata, buildEmvPayload, generateTimestamp, isValidAmount, renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
 import type { EmvField, CoreFields, MerchantAccountFields, AdditionalDataFields, PrivateFields } from "bimpay-qr-generator";
 import { renderPaymentCard, exportPaymentCardPdf, QR_OUTPUT_SIZES, outputDimensions, templateDimensions } from "bimpay-payment-cards";
@@ -807,10 +808,6 @@ export default function Generator() {
             </p>
           )}
 
-          <button type="button" disabled={!qrIsCurrent} onClick={() => setShowStandaloneQr(true)}
-            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">
-            Open high-resolution QR
-          </button>
           {showStandaloneQr && qrIsCurrent && <StandaloneQrDialog
             payload={generatedPayload} logo={qrLogo} merchantName={coreFields.merchantName}
             fixedPrice={generatedFixedPrice} onClose={() => setShowStandaloneQr(false)}
@@ -835,6 +832,7 @@ export default function Generator() {
             selectedSourceId={exportSourceId}
             selectedTemplateId={exportTemplateId}
             sources={qrExportSources}
+            onOpenStandaloneQr={() => setShowStandaloneQr(true)}
             onTemplateChange={setExportTemplateId}
             isDonation={isDonation}
           />
@@ -1007,6 +1005,7 @@ interface QrTemplateExporterProps {
   selectedSourceId: QrExportSourceId;
   selectedTemplateId: QrExportTemplateId;
   sources: QrExportSource[];
+  onOpenStandaloneQr: () => void;
   onTemplateChange: (value: QrExportTemplateId) => void;
   isDonation: boolean;
 }
@@ -1025,6 +1024,7 @@ function QrTemplateExporter({
   selectedTemplateId,
   sources,
   onTemplateChange,
+  onOpenStandaloneQr,
   isDonation,
 }: QrTemplateExporterProps) {
   const [exportMessage, setExportMessage] = useState("");
@@ -1358,6 +1358,8 @@ function QrTemplateExporter({
           </div>
         </div>
       </div>
+
+      <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
 
       <div className="mt-5 rounded-lg border border-slate-200 bg-slate-100 p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

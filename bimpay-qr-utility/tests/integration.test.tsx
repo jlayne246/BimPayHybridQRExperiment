@@ -209,3 +209,22 @@ it("discards a pending standalone QR when payment details change", async () => {
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByAltText("High-resolution payment QR")).toBeNull();
 });
+
+it("prevents pending standalone sharing from delivering an image after payment changes", async () => {
+  await validForm(); await ready();
+  await waitFor(() => expect((screen.getByRole("button", { name: "Share QR image" }) as HTMLButtonElement).disabled).toBe(false));
+  const pending = deferred<Response>();
+  vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  const share = vi.fn();
+  Object.defineProperty(navigator, "share", { configurable: true, value: share });
+  Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  fireEvent.click(screen.getByRole("button", { name: "Share QR image" }));
+  change("Account / merchant number", "00999");
+  await act(async () => pending.resolve({ blob: async () => new Blob(["png"], { type: "image/png" }) } as Response));
+  expect(share).not.toHaveBeenCalled();
+  expect(click).not.toHaveBeenCalled();
+  for (const name of ["Download QR as PNG", "Download QR as PDF", "Share QR image"]) {
+    expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+  }
+});
