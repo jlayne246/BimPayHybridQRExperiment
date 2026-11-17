@@ -19,10 +19,10 @@ const SORTED_MERCHANT_CATEGORY_OPTIONS = [...MERCHANT_CATEGORY_OPTIONS].sort((a,
 type AmountMode = "variable" | "fixed";
 type RecipientType = "large-business" | "small-medium-business" | "microbusiness" | "organisation";
 const RECIPIENT_TYPES = [
-  { value: "small-medium-business", label: "Small / medium business" },
-  { value: "large-business", label: "Large business" },
-  { value: "organisation", label: "Charity / non-profit / social organisation / individual cause" },
-  { value: "microbusiness", label: "Individual / microbusiness" },
+  { value: "small-medium-business", label: "Small or medium business" },
+  { value: "large-business", label: "Large/multi-branch business or corporation" },
+  { value: "organisation", label: "Charity, non-profit, social organisation or individual cause" },
+  { value: "microbusiness", label: "Individual or microbusiness" },
 ];
 interface QrExportSource {
   id: QrExportSourceId;
@@ -1228,7 +1228,7 @@ function QrTemplateExporter({
 
   return (
     <EditorSection
-      title="Print / Share"
+      title="Print and Share"
     >
       <section aria-labelledby="qr-code-section-title">
         <h3 id="qr-code-section-title" className="text-lg font-bold text-slate-950">QR Code</h3>
