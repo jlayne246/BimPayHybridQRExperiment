@@ -208,7 +208,9 @@ for (const width of [390, 1280]) {
 
 test("bundled BiMPay centre logo is the default and can be removed/restored without stale exports", async ({ page }, testInfo) => {
   await validForm(page);
-  await expect(page.getByAltText("QR centre logo")).toHaveAttribute("src", /bimpay-qr-logo/);
+  const debugEnabled = testInfo.project.metadata.debugEnabled ?? (process.env.VITE_ENABLE_DEBUG === "true");
+  if (debugEnabled) await expect(page.getByAltText("QR centre logo")).toHaveAttribute("src", /bimpay-qr-logo/);
+  else await expect(page.getByAltText("QR centre logo")).toHaveCount(0);
   await generate(page, false);
   const panel = page.getByRole("region", { name: "Standalone QR output" });
   const image = panel.getByAltText("Standalone payment QR");
@@ -233,6 +235,7 @@ test("bundled BiMPay centre logo is the default and can be removed/restored with
   let download = page.waitForEvent("download");
   await panel.getByRole("button", { name: "Download QR as PNG" }).click();
   expect(await readFile((await (await download).path())!)).toEqual(Buffer.from(branded!.split(",")[1], "base64"));
+  if (debugEnabled) {
   await page.getByRole("button", { name: "Remove Logo", exact: true }).click();
   await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeDisabled();
   await generate(page, false);
@@ -241,6 +244,7 @@ test("bundled BiMPay centre logo is the default and can be removed/restored with
   await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeDisabled();
   await generate(page, false);
   await expect.poll(centreHasColour).toBe(true);
+  }
   await page.getByRole("button", { name: "Create a Payment Card" }).click();
   const cardImage = page.getByAltText(/BiMPay Accepted Here preview$/);
   await expect(cardImage).toBeVisible();
@@ -255,7 +259,7 @@ test("bundled BiMPay centre logo is the default and can be removed/restored with
     return false;
   });
   expect(cardHasLogo).toBe(true);
-  await page.getByRole("button", { name: "Remove Logo", exact: true }).click();
+  if (debugEnabled) await page.getByRole("button", { name: "Remove Logo", exact: true }).click();
   await page.getByRole("button", { name: "Clear Form" }).click();
-  await expect(page.getByAltText("QR centre logo")).toHaveAttribute("src", /bimpay-qr-logo/);
+  if (debugEnabled) await expect(page.getByAltText("QR centre logo")).toHaveAttribute("src", /bimpay-qr-logo/);
 });

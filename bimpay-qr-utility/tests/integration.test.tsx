@@ -241,6 +241,10 @@ it.each([undefined, "false", "TRUE", "1", ""])("blocks debug routes unless the b
   window.location.hash = "#/debug";
   render(<Generator />);
   expect(screen.queryByRole("link", { name: "Debug QR Scheme" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "QR logo (optional)" })).toBeNull();
+  expect(screen.queryByLabelText("Upload QR logo")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Remove Logo", exact: true })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use BiMPay Logo", exact: true })).toBeNull();
   expect(screen.queryByLabelText(/^59 Merchant Name/)).toBeNull();
   expect(screen.getByLabelText(/^Business name/)).toBeTruthy();
   await waitFor(() => expect(window.location.hash).toBe("#/"));
@@ -252,6 +256,8 @@ it.each(["#/debug", "#/customise"])("allows review-build debug route %s", route 
   window.location.hash = route;
   render(<Generator />);
   expect(screen.getByLabelText(/^59 Merchant Name/)).toBeTruthy();
+  expect(screen.getByLabelText("Upload QR logo")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Remove Logo", exact: true })).toBeTruthy();
   expect(screen.getByRole("link", { name: "Back to QR creator" })).toBeTruthy();
 });
 it("does not invalidate a public QR when a blocked debug hash is entered", async () => {

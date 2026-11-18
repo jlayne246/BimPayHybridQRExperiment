@@ -5,6 +5,15 @@ test("debug build guard controls navigation and direct hash routes", async ({ pa
   await page.goto("/");
   const debugLink = page.getByRole("link", { name: "Debug QR Scheme" });
   if (debugEnabled) {
+    await expect(page.getByLabel("Upload QR logo")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove Logo", exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByLabel("Upload QR logo")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "QR logo (optional)" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Remove Logo", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Use BiMPay Logo", exact: true })).toHaveCount(0);
+  }
+  if (debugEnabled) {
     await expect(debugLink).toHaveAttribute("href", "#/debug");
     await debugLink.click();
     await expect(page).toHaveURL(/#\/debug$/);

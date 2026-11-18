@@ -729,7 +729,7 @@ export default function Generator() {
             <TemplatePreview title="Tag 80 Template" value={privateTemplate} />
           </EditorSection>}
 
-          <EditorSection title="QR logo (optional)">
+          {debugEnabled && <EditorSection title="QR logo (optional)">
             <input ref={logoFileInput} type="file" aria-label="Upload QR logo" className="block w-full min-w-0 text-sm text-slate-700 file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-slate-300 file:bg-slate-100 file:px-4 file:py-2 file:font-semibold file:text-slate-900 hover:file:bg-slate-200" accept="image/png,image/jpeg,image/webp" onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
@@ -783,7 +783,7 @@ export default function Generator() {
             >Use BiMPay Logo</button>}
             <p className="mt-2 text-xs text-slate-500">The BiMPay logo is included by default. Remove it for a plain QR, or restore it with Use BiMPay Logo. Changing the logo requires regenerating the QR.</p>
             {logoError && <p role="alert" className="mt-2 text-sm text-red-700">{logoError}</p>}
-          </EditorSection>
+          </EditorSection>}
 
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start gap-3">
