@@ -67,7 +67,7 @@ Verify browser behaviour with `npm run test:browser` for the default public buil
 
 - **Printable QR preview** provides its own **Download as PNG**, **Download as PDF**, and **Share QR** controls. PNG output is 2048 × 2048 pixels; QR-only PDFs are 100 × 100 mm square pages, including the quiet zone. Sharing uses the PNG, or downloads it when file sharing is unavailable. Select the QR to open the larger dialog, which also provides a PNG download and closes with Close or Escape. Stale payment details disable exports and close the dialog; pending image/PDF/sharing work rechecks freshness before delivery. Flyer-only settings keep the QR valid. PDF code remains lazy-loaded. The optional card editor keeps its template, orientation, paper size and text controls directly above **Printable QR Payment Card preview**, followed by card exports.
 - Fixed-price labels are snapshots of the generated QR amount.
-- Descriptions and donation causes allow 30 characters.
+- Descriptions and donation causes allow 30 characters. Give to / Cause defaults to the recipient name and follows name changes until manually edited. Custom causes (including an intentionally blank value) are preserved across amount-mode changes. Clearing the form restores automatic recipient-name defaults.
 - Reloading or clearing the form removes in-memory data. Downloaded/shared files contain the encoded recipient information.
 
 The payload layout retains the prototype's `bb.org.cb.mpqr` GUI, `QRBB` scheme, observed tag-26 routing fields, and `***` variable-amount convention. Confirm these conventions and approved branding with the scheme owner before official adoption. The utility generates QR files; it does not process payments.

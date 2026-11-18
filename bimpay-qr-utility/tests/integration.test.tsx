@@ -291,3 +291,34 @@ it("clearing the form keeps the default logo when an older upload finishes later
   await act(async () => pending.resolve("data:image/png;base64,late-custom-logo"));
   expect((screen.getByAltText("QR centre logo") as HTMLImageElement).getAttribute("src")).toBe(defaultQrLogo);
 });
+
+it("defaults donation cause to the recipient name until edited, across amount modes, and resets the override", async () => {
+  await validForm(); await ready();
+  change("Recipient type", "organisation");
+  fireEvent.click(screen.getByLabelText("This QR code is for charitable donations"));
+  const cause = () => screen.getByLabelText(/^Give to \/ Cause/) as HTMLInputElement;
+  expect(cause().value).toBe("EXAMPLE SHOP");
+  change("Organisation name", "EXAMPLE CHARITY");
+  expect(cause().value).toBe("EXAMPLE CHARITY");
+  await ready();
+  await waitFor(() => expect(card.mock.lastCall?.[0].donationCause).toBe("EXAMPLE CHARITY"));
+  change("How much will supporters give?", "fixed");
+  expect(cause().value).toBe("EXAMPLE CHARITY");
+  await ready();
+  await waitFor(() => expect(card.mock.lastCall?.[0]).toMatchObject({ donationCause: "EXAMPLE CHARITY", isDonation: true, templateId: "bimpay-fixed" }));
+  change("Give to / Cause", "ORGAN APPEAL");
+  expect(screen.queryByText(/Payment details (?:have )?changed/)).toBeNull();
+  change("Organisation name", "RENAMED CHARITY");
+  expect(cause().value).toBe("ORGAN APPEAL");
+  change("How much will supporters give?", "variable");
+  expect(cause().value).toBe("ORGAN APPEAL");
+  change("Give to / Cause", "");
+  expect(cause().value).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Clear Form" }));
+  change("Business name", "NEW RECIPIENT");
+  change("Bank or credit union", "AFPUBBB2"); change("Branch", "0"); change("Account / merchant number", "00999");
+  change("Recipient type", "organisation");
+  fireEvent.click(screen.getByLabelText("This QR code is for charitable donations"));
+  await ready();
+  expect(cause().value).toBe("NEW RECIPIENT");
+});

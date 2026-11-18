@@ -1090,7 +1090,11 @@ function QrTemplateExporter({
   }
   const [exportMessage, setExportMessage] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [donationCause, setDonationCause] = useState("");
+  const [donationCauseOverride, setDonationCauseOverride] = useState<string | null>(null);
+  const donationCause = donationCauseOverride ?? merchantName.slice(0, 30);
+  useEffect(() => {
+    if (!generationRevision) setDonationCauseOverride(null);
+  }, [generationRevision]);
   const [fixedDescription, setFixedDescription] = useState("");
   const [outputSize, setOutputSize] = useState<QrOutputSize>("a4");
   const [previewDataUrl, setPreviewDataUrl] = useState("");
@@ -1398,7 +1402,7 @@ function QrTemplateExporter({
             value={donationCause}
             maxLength={30}
             onChange={(event) =>
-              setDonationCause(event.target.value.slice(0, 30))
+              setDonationCauseOverride(event.target.value.slice(0, 30))
             }
           />
           <span className="mt-1 block text-xs text-slate-500">
