@@ -25,11 +25,33 @@ For the utility's existing Vercel project, keep Root Directory set to `bimpay-qr
 
 The utility's `prebuild` script builds both library packages before TypeScript checks or Vite run. This is required on clean deployments because package exports point to generated `dist/` JavaScript and declarations, which are not committed. Running `npm run build` from either the repository root or the utility directory now builds the packages first. The additional implicit-any errors seen when package declarations are absent are consequences of the unresolved imports.
 
+## Public and protected review builds
+
+Both Vercel projects can use the same repository, branch and `bimpay-qr-utility` root directory. Configure the build-time environment variable separately:
+
+| Project | `VITE_ENABLE_DEBUG` | Behaviour |
+| --- | --- | --- |
+| Public | unset or `false` | No debug navigation or technical controls; `#/debug` and legacy `#/customise` are replaced with `#/` without clearing form data |
+| Protected review | `true` | Debug navigation and both debug routes enabled |
+
+Only the exact lowercase string `true` enables debugging. The default is disabled, including local development. For local review, copy `.env.example` to `.env.local`, set `VITE_ENABLE_DEBUG=true`, and restart Vite. From the repository root you can also run:
+
+```sh
+VITE_ENABLE_DEBUG=true npm run dev
+VITE_ENABLE_DEBUG=true npm run build
+```
+
+In each Vercel project's **Settings → Environment Variables**, set the flag for the applicable Production and Preview environments and redeploy. Set public environments to `false`; set the review project's environments to `true`. Protect the review project's entire deployment with Vercel Authentication (All Deployments). Changing the flag requires a rebuild: it is compiled into the JavaScript and is not a runtime password, secret, or user-authentication mechanism. Public bundles omit the debug-only interface; shared payload-generation code remains available because the normal app needs it.
+
+A hidden hash alone is not access control, and the build flag does not identify authorised users. The separate review deployment must remain protected by the hosting provider. The original `bimpay-hybrid-qr-prototype` app is unaffected.
+
+Verify browser behaviour with `npm run test:browser` for the default public build, or `VITE_ENABLE_DEBUG=true npm run test:browser -- --grep "debug build guard"` for review routing. Automated tests cover the initial hash, hash changes, legacy URLs, literal flag values, and QR freshness after a blocked navigation.
+
 ## Behaviour
 
-- The default page uses merchant-friendly labels for business details, receiving account, payment amount, and printing/sharing. Open `#/customise` using **Customise / Experiment** for the detailed QR fields and payload inspection; **Back to QR creator** returns to the simple form. Both views share in-memory values, and hash routes work on static hosts without routing rewrites.
+- The default page uses merchant-friendly labels for business details, receiving account, payment amount, and printing/sharing. In a debug-enabled review build, open `#/debug` using **Debug QR Scheme** for the detailed QR fields and payload inspection; **Back to QR creator** returns to the simple form. The legacy `#/customise` URL remains supported only in debug-enabled builds. Public builds omit the button and block both routes. Both views share in-memory values, and hash routes work on static hosts without routing rewrites.
 - Merchant City is locked to `BRIDGETOWN` and hidden on the merchant page. Payload format, initiation method, GUI, scheme, and automatic generation timestamp remain locked in both views.
-- Recipient type controls the simplified form: Individual / microbusiness uses name/trading-name and receiving-account labels; Small / medium business (default) uses business labels; both offer optional invoice/reference/notes. Large business additionally offers contact, store, loyalty, customer, and till references. Hidden details are preserved in memory but omitted from simplified-page QR generation. Customise / Experiment exposes the full additional-data set for deliberate testing.
+- Recipient type controls the simplified form: Individual / microbusiness uses name/trading-name and receiving-account labels; Small / medium business (default) uses business labels; both offer optional invoice/reference/notes. Large business additionally offers contact, store, loyalty, customer, and till references. Hidden details are preserved in memory but omitted from simplified-page QR generation. Debug mode exposes the full additional-data set for deliberate testing.
 - Category is selectable for all recipient types. Individual / microbusiness does not imply money transfer or force `4829`; select a category appropriate to the activity.
 - Charity / non-profit / social organisation / individual cause uses organisation/supporter labels, optional purpose/reference, and shows an explicit charitable-donation checkbox. Organisation identity alone does not select donation mode. Enabling donations selects the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
 - Merchant/routing fields and QR rendering run in browser memory.
