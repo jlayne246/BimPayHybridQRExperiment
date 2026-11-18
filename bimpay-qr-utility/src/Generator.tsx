@@ -117,13 +117,23 @@ export default function Generator() {
   const microBusiness = recipientType === "microbusiness";
   const organisation = recipientType === "organisation";
   const largeBusiness = recipientType === "large-business";
-  const [technicalMode, setTechnicalMode] = useState(() => window.location.hash === "#/customise");
+  const debugEnabled = import.meta.env.VITE_ENABLE_DEBUG === "true";
+  const isDebugRoute = () => ["#/debug", "#/customise"].includes(window.location.hash);
+  const [technicalRoute, setTechnicalRoute] = useState(() => debugEnabled && isDebugRoute());
+  const technicalMode = debugEnabled && technicalRoute;
    const [isDonation, setIsDonation] = useState(false);
   useEffect(() => {
-    const onRouteChange = () => setTechnicalMode(window.location.hash === "#/customise");
+    const onRouteChange = () => {
+      const requested = ["#/debug", "#/customise"].includes(window.location.hash);
+      if (requested && !debugEnabled) {
+        window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#/`);
+      }
+      setTechnicalRoute(debugEnabled && requested);
+    };
+    onRouteChange();
     window.addEventListener("hashchange", onRouteChange);
     return () => window.removeEventListener("hashchange", onRouteChange);
-  }, []);
+  }, [debugEnabled]);
   const [coreFields, setCoreFields] = useState<CoreFields>({
     payloadFormat: "01",
     initiationMethod: "11",
@@ -417,9 +427,9 @@ export default function Generator() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <a href={technicalMode ? "#/" : "#/customise"} className="rounded-lg border border-cyan-950/20 bg-white px-4 py-3 text-sm font-bold text-cyan-950 transition hover:bg-slate-50">
-              {technicalMode ? "Back to QR creator" : "Experiment with QR Scheme"}
-            </a>
+            {debugEnabled && <a href={technicalMode ? "#/" : "#/debug"} className="rounded-lg border border-cyan-950/20 bg-white px-4 py-3 text-sm font-bold text-cyan-950 transition hover:bg-slate-50">
+              {technicalMode ? "Back to QR creator" : "Debug QR Scheme"}
+            </a>}
             {technicalMode && (
             <button
               type="button"

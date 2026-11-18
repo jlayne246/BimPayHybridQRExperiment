@@ -43,13 +43,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 beforeEach(() => {
+  // Existing integration scenarios exercise both normal and technical views in a review build.
+  vi.stubEnv("VITE_ENABLE_DEBUG", "true");
   window.location.hash = "";
   vi.clearAllMocks();
   qr.mockReset().mockResolvedValue("data:image/png;base64,qr");
   card.mockReset().mockResolvedValue("data:image/png;base64,card");
   pdf.mockReset().mockResolvedValue(new Uint8Array([1]));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 describe("workspace application integration", () => {
   it("generates the existing variable payload and passes a print-resolution image to cards", async () => {
     await validForm(); await ready();
@@ -230,4 +232,32 @@ it("prevents pending standalone sharing from delivering an image after payment c
   for (const name of ["Download QR as PNG", "Download QR as PDF", "Share QR image"]) {
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   }
+});
+
+
+it.each([undefined, "false", "TRUE", "1", ""])("blocks debug routes unless the build flag is exactly true (%s)", async flag => {
+  vi.stubEnv("VITE_ENABLE_DEBUG", flag);
+  window.location.hash = "#/debug";
+  render(<Generator />);
+  expect(screen.queryByRole("link", { name: "Debug QR Scheme" })).toBeNull();
+  expect(screen.queryByLabelText(/^59 Merchant Name/)).toBeNull();
+  expect(screen.getByLabelText(/^Business name/)).toBeTruthy();
+  await waitFor(() => expect(window.location.hash).toBe("#/"));
+  act(() => { window.location.hash = "#/customise"; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+  expect(window.location.hash).toBe("#/");
+  expect(screen.queryByRole("button", { name: "Show Advanced" })).toBeNull();
+});
+it.each(["#/debug", "#/customise"])("allows review-build debug route %s", route => {
+  window.location.hash = route;
+  render(<Generator />);
+  expect(screen.getByLabelText(/^59 Merchant Name/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Back to QR creator" })).toBeTruthy();
+});
+it("does not invalidate a public QR when a blocked debug hash is entered", async () => {
+  vi.stubEnv("VITE_ENABLE_DEBUG", "false");
+  await validForm(); await ready();
+  act(() => { window.location.hash = "#/debug"; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+  expect(window.location.hash).toBe("#/");
+  expect(screen.queryByText(/Payment details (?:have )?changed/)).toBeNull();
+  expect((screen.getByRole("button", { name: "Download QR as PNG" }) as HTMLButtonElement).disabled).toBe(false);
 });
