@@ -33,6 +33,7 @@ test("real browser renders eight templates and downloads PNG/PDF", async ({ page
   }
   await page.getByLabel(/^Recipient type/).selectOption("organisation");
   await page.getByLabel("This QR code is for charitable donations").check();
+  await expect(page.getByLabel(/^Give to \/ Cause/)).toHaveValue("EXAMPLE SHOP");
   await page.getByLabel(/^Give to \/ Cause/).fill("ORGAN APPEAL");
   for (const orientation of ["Portrait", "Landscape"]) {
     await page.getByRole("button", { name: orientation, exact: true }).click();
