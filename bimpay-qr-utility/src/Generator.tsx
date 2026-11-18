@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import StandaloneQrDialog from "./StandaloneQrDialog";
 import StandaloneQrOutput from "./StandaloneQrOutput";
 import paymentCardExample from "./assets/payment-card-example.png";
+import defaultQrLogo from "./assets/bimpay-qr-logo.png";
 import { BIMPAY_GUI, BIMPAY_SCHEME, buildBiMPayFields, buildMerchantAccount, buildAdditionalData, buildPrivateMetadata, buildEmvPayload, generateTimestamp, isValidAmount, renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
 import type { EmvField, CoreFields, MerchantAccountFields, AdditionalDataFields, PrivateFields } from "bimpay-qr-generator";
 import { renderPaymentCard, exportPaymentCardPdf, QR_OUTPUT_SIZES, outputDimensions, templateDimensions } from "bimpay-payment-cards";
@@ -179,9 +180,10 @@ export default function Generator() {
   const [generatedFixedPrice, setGeneratedFixedPrice] = useState("");
   const [message, setMessage] = useState("");
   const [amountMode, setAmountMode] = useState<AmountMode>("variable");
-  const [qrLogo, setQrLogo] = useState("");
+  const [qrLogo, setQrLogo] = useState(defaultQrLogo);
   const [logoError, setLogoError] = useState("");
   const logoFileInput = useRef<HTMLInputElement>(null);
+  const logoRequestIdRef = useRef(0);
   const [advancedMode, setAdvancedMode] = useState(false);
   const [institutionBic, setInstitutionBic] = useState("");
   const [branchIndex, setBranchIndex] = useState("");
@@ -356,6 +358,7 @@ export default function Generator() {
   }
 
   function resetToDefaults(): void {
+    logoRequestIdRef.current += 1;
     generationIdRef.current += 1;
     setGenerating(false);
     setRecipientType("small-medium-business");
@@ -398,7 +401,7 @@ export default function Generator() {
     });
 
     setAmountMode("variable");
-    setQrLogo("");
+    setQrLogo(defaultQrLogo);
     setLogoError("");
     if (logoFileInput.current) logoFileInput.current.value = "";
     setAdvancedMode(false);
@@ -730,6 +733,7 @@ export default function Generator() {
             <input ref={logoFileInput} type="file" aria-label="Upload QR logo" className="block w-full min-w-0 text-sm text-slate-700 file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-slate-300 file:bg-slate-100 file:px-4 file:py-2 file:font-semibold file:text-slate-900 hover:file:bg-slate-200" accept="image/png,image/jpeg,image/webp" onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
+              const logoRequestId = ++logoRequestIdRef.current;
               if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
                 setLogoError("Choose a PNG, JPEG or WebP image under 2 MB.");
                 return;
@@ -741,19 +745,22 @@ export default function Generator() {
                   reader.onerror = () => reject(new Error("Could not read this image."));
                   reader.readAsDataURL(file);
                 });
-                setQrLogo(await prepareQrLogo(dataUrl));
+                const preparedLogo = await prepareQrLogo(dataUrl);
+                if (logoRequestId !== logoRequestIdRef.current) return;
+                setQrLogo(preparedLogo);
                 setLogoError("");
                 // setRawQr("");
                 // setGeneratedPayload("");
               } catch {
-                setLogoError("Could not load this image. Choose another file.");
+                if (logoRequestId === logoRequestIdRef.current) setLogoError("Could not load this image. Choose another file.");
               }
             }} />
             {qrLogo && <div className="mt-3 flex items-center gap-3">
-              <img src={qrLogo} alt="Uploaded QR logo" className="h-16 w-16 object-contain" />
+              <img src={qrLogo} alt="QR centre logo" className="h-16 w-16 object-contain" />
               <button
                 type="button"
                 onClick={() => {
+                  logoRequestIdRef.current += 1;
                   setQrLogo("");
                   // setRawQr("");
                   // setGeneratedPayload("");
@@ -764,6 +771,17 @@ export default function Generator() {
                 Remove Logo
               </button>
             </div>}
+            {qrLogo !== defaultQrLogo && <button
+              type="button"
+              onClick={() => {
+                logoRequestIdRef.current += 1;
+                setQrLogo(defaultQrLogo);
+                setLogoError("");
+                if (logoFileInput.current) logoFileInput.current.value = "";
+              }}
+              className="mt-3 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+            >Use BiMPay Logo</button>}
+            <p className="mt-2 text-xs text-slate-500">The BiMPay logo is included by default. Remove it for a plain QR, or restore it with Use BiMPay Logo. Changing the logo requires regenerating the QR.</p>
             {logoError && <p role="alert" className="mt-2 text-sm text-red-700">{logoError}</p>}
           </EditorSection>
 

@@ -3,6 +3,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import Generator from "../src/Generator";
+import defaultQrLogo from "../src/assets/bimpay-qr-logo.png";
 import { renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
 import { renderPaymentCard, exportPaymentCardPdf } from "bimpay-payment-cards";
 vi.mock("bimpay-qr-generator", async original => ({
@@ -190,7 +191,7 @@ it("renders a standalone 2048px QR from the current payload and preserves flyer-
   mockDialog(); await validForm(); await ready();
   fireEvent.click(screen.getByRole("button", { name: "Open high-resolution QR" }));
   await screen.findByAltText("High-resolution payment QR");
-  expect(qr).toHaveBeenCalledWith(qr.mock.calls[0][0], 2048, "", 4);
+  expect(qr).toHaveBeenCalledWith(qr.mock.calls[0][0], 2048, defaultQrLogo, 4);
   change("Paper size", "a5");
   expect(screen.getByRole("dialog")).toBeTruthy();
   const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
@@ -260,4 +261,33 @@ it("does not invalidate a public QR when a blocked debug hash is entered", async
   expect(window.location.hash).toBe("#/");
   expect(screen.queryByText(/Payment details (?:have )?changed/)).toBeNull();
   expect((screen.getByRole("button", { name: "Download QR as PNG" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it("uses the bundled BiMPay logo by default, preserves plain QR choice, and restores the default on reset", async () => {
+  await validForm(); await ready();
+  expect(qr.mock.calls[0][2]).toBe(defaultQrLogo);
+  expect((screen.getByAltText("QR centre logo") as HTMLImageElement).getAttribute("src")).toBe(defaultQrLogo);
+  fireEvent.click(screen.getByRole("button", { name: "Remove Logo" }));
+  expect(screen.queryByAltText("QR centre logo")).toBeNull();
+  expect(screen.getByText(/Payment details (?:have )?changed/)).toBeTruthy();
+  await ready();
+  expect(qr.mock.calls.filter(call => call[1] === 380).at(-1)?.[2]).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Use BiMPay Logo" }));
+  expect(screen.getByText(/Payment details (?:have )?changed/)).toBeTruthy();
+  await ready();
+  expect(qr.mock.calls.filter(call => call[1] === 380).at(-1)?.[2]).toBe(defaultQrLogo);
+  fireEvent.click(screen.getByRole("button", { name: "Remove Logo" }));
+  fireEvent.click(screen.getByRole("button", { name: "Clear Form" }));
+  expect((screen.getByAltText("QR centre logo") as HTMLImageElement).getAttribute("src")).toBe(defaultQrLogo);
+});
+
+it("clearing the form keeps the default logo when an older upload finishes later", async () => {
+  await validForm();
+  const pending = deferred<string>();
+  vi.mocked(prepareQrLogo).mockImplementationOnce(() => pending.promise);
+  fireEvent.change(screen.getByLabelText("Upload QR logo"), { target: { files: [new File(["image"], "logo.png", { type: "image/png" })] } });
+  await waitFor(() => expect(prepareQrLogo).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole("button", { name: "Clear Form" }));
+  await act(async () => pending.resolve("data:image/png;base64,late-custom-logo"));
+  expect((screen.getByAltText("QR centre logo") as HTMLImageElement).getAttribute("src")).toBe(defaultQrLogo);
 });
