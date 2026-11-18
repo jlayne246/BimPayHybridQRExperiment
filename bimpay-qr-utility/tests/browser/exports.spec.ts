@@ -204,3 +204,57 @@ for (const width of [390, 1280]) {
     await expect(page.getByRole("region", { name: "QR Payment Card", exact: true })).toHaveCount(0);
   });
 }
+
+test("bundled BiMPay centre logo is the default and can be removed/restored without stale exports", async ({ page }, testInfo) => {
+  await validForm(page);
+  await expect(page.getByAltText("QR centre logo")).toHaveAttribute("src", /bimpay-qr-logo/);
+  await generate(page, false);
+  const panel = page.getByRole("region", { name: "Standalone QR output" });
+  const image = panel.getByAltText("Standalone payment QR");
+  async function centreHasColour() {
+    return image.evaluate(async (element: HTMLImageElement) => {
+      await element.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = element.naturalWidth; canvas.height = element.naturalHeight;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(element, 0, 0);
+      const { data } = context.getImageData(canvas.width * 0.4, canvas.height * 0.4, canvas.width * 0.2, canvas.height * 0.2);
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 2] > data[i] + 30 && data[i + 2] > 100) return true;
+      }
+      return false;
+    });
+  }
+  await expect(image).toBeVisible();
+  await expect.poll(centreHasColour).toBe(true);
+  await panel.screenshot({ path: testInfo.outputPath("default-bimpay-logo.png") });
+  const branded = await image.getAttribute("src");
+  let download = page.waitForEvent("download");
+  await panel.getByRole("button", { name: "Download QR as PNG" }).click();
+  expect(await readFile((await (await download).path())!)).toEqual(Buffer.from(branded!.split(",")[1], "base64"));
+  await page.getByRole("button", { name: "Remove Logo", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeDisabled();
+  await generate(page, false);
+  await expect.poll(centreHasColour).toBe(false);
+  await page.getByRole("button", { name: "Use BiMPay Logo", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "Download QR as PNG" })).toBeDisabled();
+  await generate(page, false);
+  await expect.poll(centreHasColour).toBe(true);
+  await page.getByRole("button", { name: "Create a Payment Card" }).click();
+  const cardImage = page.getByAltText(/BiMPay Accepted Here preview$/);
+  await expect(cardImage).toBeVisible();
+  const cardHasLogo = await cardImage.evaluate(async (element: HTMLImageElement) => {
+    await element.decode();
+    const canvas = document.createElement("canvas"); canvas.width = element.naturalWidth; canvas.height = element.naturalHeight;
+    const context = canvas.getContext("2d")!; context.drawImage(element, 0, 0);
+    const scale = Math.min(canvas.width / 1134, canvas.height / 1701);
+    const centerY = (canvas.height - 1701 * scale) / 2 + 899 * scale;
+    const { data } = context.getImageData(canvas.width / 2 - 40, centerY - 40, 80, 80);
+    for (let i = 0; i < data.length; i += 4) if (data[i + 2] > data[i] + 30 && data[i + 2] > 100) return true;
+    return false;
+  });
+  expect(cardHasLogo).toBe(true);
+  await page.getByRole("button", { name: "Remove Logo", exact: true }).click();
+  await page.getByRole("button", { name: "Clear Form" }).click();
+  await expect(page.getByAltText("QR centre logo")).toHaveAttribute("src", /bimpay-qr-logo/);
+});
