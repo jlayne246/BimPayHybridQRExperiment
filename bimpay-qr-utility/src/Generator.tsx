@@ -1293,7 +1293,7 @@ function QrTemplateExporter({
           <h3 id="qr-code-section-title" className="text-lg font-bold text-slate-950">QR Code</h3>
              {Boolean(selectedSource.qr) && (
                 
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 mt-4">
                   <div className="flex items-start gap-3">
                     <span className="text-lg" aria-hidden="true">⚠️</span>
                 
