@@ -832,38 +832,6 @@ export default function Generator() {
             </div>
           )}
 
-          {qrIsCurrent && (
-            
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-start gap-3">
-                <span className="text-lg" aria-hidden="true">⚠️</span>
-            
-                <div>
-                  <p className="text-sm font-bold text-amber-950">
-                    Verify your QR code before use
-                  </p>
-            
-                  <div className="mt-1 space-y-2 text-sm leading-6 text-amber-900">
-                    <p>
-                      Before displaying or sharing this QR code, scan it
-                      using a compatible payment app and verify that the
-                      recipient name, financial institution, branch and
-                      receiving account details are correct.
-                      This utility does not verify account ownership.
-                    </p>
-            
-                    <p>
-                      We recommend making a test payment of{" "}
-                      <strong>BBD $0.01</strong> and confirming that the
-                      funds have been received in the intended account.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          )}
-
           {showStandaloneQr && qrIsCurrent && <StandaloneQrDialog
             payload={generatedPayload} logo={qrLogo} merchantName={coreFields.merchantName}
             fixedPrice={generatedFixedPrice} onClose={() => setShowStandaloneQr(false)}
@@ -1323,6 +1291,37 @@ function QrTemplateExporter({
       {!generationRevision && <p className="text-sm text-slate-600">Create your payment QR to see download and sharing options.</p>}
       <section ref={qrSection} hidden={!generationRevision} aria-labelledby="qr-code-section-title">
           <h3 id="qr-code-section-title" className="text-lg font-bold text-slate-950">QR Code</h3>
+             {Boolean(selectedSource.qr) && (
+                
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-lg" aria-hidden="true">⚠️</span>
+                
+                    <div>
+                      <p className="text-sm font-bold text-amber-950">
+                        Verify your QR code before use
+                      </p>
+                
+                      <div className="mt-1 space-y-2 text-sm leading-6 text-amber-900">
+                        <p>
+                          Before displaying or sharing this QR code, scan it
+                          using a compatible payment app and verify that the
+                          recipient name, financial institution, branch and
+                          receiving account details are correct.
+                          This utility does not verify account ownership.
+                        </p>
+                
+                        <p>
+                          We recommend making a test payment of{" "}
+                          <strong>BBD $0.01</strong> and confirming that the
+                          funds have been received in the intended account.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+    
+              )}
           <StandaloneQrOutput payload={selectedSource.value} logo={logo} merchantName={merchantName} onOpen={onOpenStandaloneQr} />
           <div className="mt-5 flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
             <figure className="w-24 shrink-0">
