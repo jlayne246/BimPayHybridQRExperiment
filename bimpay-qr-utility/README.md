@@ -50,7 +50,7 @@ Verify browser behaviour with `npm run test:browser` for the default public buil
 ## Behaviour
 
 - The default page uses merchant-friendly labels for business details, receiving account, payment amount, and printing/sharing. In a debug-enabled review build, open `#/debug` using **Debug QR Scheme** for the detailed QR fields and payload inspection; **Back to QR creator** returns to the simple form. The legacy `#/customise` URL remains supported only in debug-enabled builds. Public builds omit the button and block both routes. Both views share in-memory values, and hash routes work on static hosts without routing rewrites.
-- Merchant City is locked to `BRIDGETOWN` and hidden on the merchant page. Payload format, initiation method, GUI, scheme, and automatic generation timestamp remain locked in both views.
+- Merchant City is locked to `BRIDGETOWN` and hidden on the merchant page. Payload format, GUI, scheme and the automatic generation timestamp remain locked. Advanced debug mode can select initiation method 11 (static) or 12 (dynamic), independently of the amount mode.
 - Recipient type controls the simplified form: Individual / microbusiness uses name/trading-name and receiving-account labels; Small / medium business (default) uses business labels; both offer optional invoice/reference/notes. Large business additionally offers contact, store, loyalty, customer, and till references. Hidden details are preserved in memory but omitted from simplified-page QR generation. Debug mode exposes the full additional-data set for deliberate testing.
 - Category is selectable for all recipient types. Individual / microbusiness does not imply money transfer or force `4829`; select a category appropriate to the activity.
 - Charity / non-profit / social organisation / individual cause uses organisation/supporter labels, optional purpose/reference, and shows an explicit charitable-donation checkbox. Organisation identity alone does not select donation mode. Enabling donations selects the Donations template while preserving orientation. Its category remains selectable; no universal charity classification is assumed. Invoice, loyalty, customer, location and terminal fields are omitted from simplified-page generation for this type.
@@ -101,3 +101,12 @@ The stale-QR safeguard remains based on encoded payment fields, private GUI and 
 The repository is an independently developed experimental utility. The generator is not an officially certified implementation and does not guarantee compatibility with all payment applications. The software does not execute or process payments. Official use of BiMPay branding or scheme-specific functionality may require authorisation. No institutional endorsement is claimed.
 
 See [refactor notes](../docs/PACKAGE_EXTRACTION.md) for compatibility decisions, validation and the small necessary defect fixes.
+
+
+## Advanced debug payment fields
+
+With `VITE_ENABLE_DEBUG=true`, open `#/debug` and **Show Advanced**. **01 Initiation Method** defaults to **11 — Static**; **12 — Dynamic** is also selectable. These identify static/reusable versus dynamic/transaction-oriented QRs and are independent of fixed or variable amounts. Selecting 12 does not make the QR single-use, guarantee expiration, or establish payment-app support.
+
+**80.02 Timer duration (experimental)** is optional. Enter a duration and choose seconds, minutes, hours or days; for example, 1.5 minutes encodes `00000090`, and 0.5 hours encodes `00001800`. Conversions are exact, without rounding: fractional seconds, negative/malformed values and values above 99,999,999 seconds are rejected. Zero encodes `00000000`; its meaning is not assumed. A blank duration omits 80.02 entirely, preserving the previous payload format by default.
+
+The eight-digit, zero-padded seconds interpretation of 80.02 is an experimental assumption supplied for testing, not a confirmed or certified BiMPay field definition. It only writes metadata: the utility does not start a countdown, expire the QR, or enforce single use. Both initiation and timer changes invalidate existing QR output, including pending generation and export work. Generated timestamps remain excluded from freshness comparisons; the timer is included. Clear Form restores method 11 and omits the timer. Public builds do not expose these controls and retain the existing defaults.

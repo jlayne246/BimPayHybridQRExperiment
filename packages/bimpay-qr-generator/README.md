@@ -47,7 +47,8 @@ Use synthetic routing/account values for experiments. Routing identifiers are su
 | `merchantCity`, `merchantCategoryCode`, `currency`, `country` | `BRIDGETOWN`, `0000`, `052`, `BB` |
 | `amountMode`, `amount` | `variable` encodes `***`; `fixed` requires a positive numeric string with zero or two decimals |
 | `gui`, `scheme`, `privateGui` | `bb.org.cb.mpqr`, `QRBB`, `bb.org.cb.mpqr` |
-| `payloadFormat`, `initiationMethod` | `01`, `11` |
+| `payloadFormat`, `initiationMethod` | `01`, `11` (static); initiation method also accepts `12` (dynamic), independently of amount mode |
+| `privateTimerSeconds` | Optional exactly eight decimal digits for experimental tag 80.02; omitted by default |
 | `timestamp` | Generated on each call in local wall-clock `YYYYMMDDhhmmss`; inject a 14-digit string for deterministic output |
 | `additionalData` | Optional `billNumber`, `mobileNumber`, `storeLabel`, `loyaltyNumber`, `referenceLabel`, `customerLabel`, `terminalLabel`, `purpose` |
 
@@ -61,7 +62,7 @@ Lower-level exports:
 - `buildEmvPayload(fields: EmvField[])`: ordered caller-supplied fields, omits blanks, appends `6304` and CRC. Does not perform high-level required-field validation.
 - `buildMerchantAccount(input)`: tag 26 children `00` GUI, `01` FI alias, `02` branch alias, `03` account reference, `04` participant code, `11` scheme.
 - `buildAdditionalData(input)`: tag 62 children `01`–`08` in the order listed above.
-- `buildPrivateMetadata(gui?, timestamp?)`: tag 80 children `00` GUI and `01` timestamp.
+- `buildPrivateMetadata(gui?, timestamp?, timerSeconds?)`: tag 80 children `00` GUI, `01` timestamp and optional `02` eight-digit whole-seconds value.
 - `generateTimestamp()`, `isValidAmount(value)`, `BIMPAY_GUI`, `BIMPAY_SCHEME`.
 - `renderPaymentQr(payload, width, logo?, margin = 4, errorCorrectionLevel?)`: render an existing payload to a PNG data URL. Defaults to M, or H when a logo is supplied. The high-level rendering options use the same settings; width defaults to 380.
 - `prepareQrLogo(source)`: crop transparent/near-white margins, preserve aspect ratio, and limit the longest edge to 1024 pixels; returns a PNG data URL. Rendering retains the original rounded backing and logo area budget.
@@ -85,3 +86,10 @@ npm install /tmp/bimpay-qr-generator-0.1.0.tgz
 ```
 
 Use a bundler that handles modern ESM and the `qrcode` dependency for browser rendering. Pure consumers can import `bimpay-qr-generator/payload` directly. No CommonJS build is supplied. Install from a packed archive rather than copying only `src/`; the archive includes built JS and declarations. Packing does not publish the package.
+
+
+### Experimental 80.02 and initiation method
+
+`privateTimerSeconds: "00000090"` appends tag 80 child 02 with an eight-digit value. This timer interpretation is unverified, not an officially established BiMPay definition. The library only encodes metadata; it does not enforce expiry, single use, or a countdown. Blank/omitted timers preserve the previous 80.00/80.01 payload exactly. Nonempty timers must be exactly eight digits. The application converts minutes/hours/days to whole seconds before invoking the library; library callers provide the encoded seconds string themselves.
+
+Initiation method accepts 11 or 12. It defaults to 11; choosing 12 does not change the amount field or verify payment-app semantics. These new controls are deliberate experimental inputs, not a replacement for the repository's existing default conventions.

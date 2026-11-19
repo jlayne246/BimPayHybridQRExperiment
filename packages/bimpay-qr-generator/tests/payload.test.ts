@@ -56,3 +56,23 @@ describe("experimental payload compatibility", () => {
     expect(validateBiMPayInput({ ...input, currency: "BBD", country: "B", merchantCategoryCode: "12" })).toHaveLength(3);
   });
 });
+
+it("supports static/dynamic initiation independently of amount mode and optional experimental 80.02", () => {
+  const old = parse(buildBiMPayPayload(input));
+  expect(old["01"]).toBe("11");
+  expect(parse(old["80"])["02"]).toBeUndefined();
+  const tags = parse(buildBiMPayPayload({ ...input, initiationMethod: "12", privateTimerSeconds: "00000090" }));
+  expect(tags["01"]).toBe("12");
+  expect(tags["54"]).toBe("***");
+  expect(parse(tags["80"])).toEqual({ "00": "bb.org.cb.mpqr", "01": input.timestamp, "02": "00000090" });
+  const fixed = parse(buildBiMPayPayload({ ...input, initiationMethod: "11", amountMode: "fixed", amount: "50.00" }));
+  expect(fixed["01"]).toBe("11");
+  expect(fixed["54"]).toBe("50.00");
+  expect(tags["63"]).toBe(crc16CcittFalse(buildBiMPayPayload({ ...input, initiationMethod: "12", privateTimerSeconds: "00000090" }).slice(0, -4)));
+});
+it.each(["90", "000000090", "-0000090", "00000.90", "abcdefgh"])("rejects malformed private timer %s", privateTimerSeconds => {
+  expect(() => buildBiMPayPayload({ ...input, privateTimerSeconds })).toThrow("eight digits");
+});
+it("rejects unsupported initiation methods", () => {
+  expect(validateBiMPayInput({ ...input, initiationMethod: "13" })).toContain("initiationMethod must be 11 (static) or 12 (dynamic).");
+});

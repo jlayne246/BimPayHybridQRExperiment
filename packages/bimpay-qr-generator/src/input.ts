@@ -21,6 +21,8 @@ export interface BiMPayInput {
   privateGui?: string;
   /** Local wall-clock YYYYMMDDhhmmss; omitted values are generated per call. */
   timestamp?: string;
+  /** Experimental 80.02 convention: optional eight-digit whole-seconds value, not certified. */
+  privateTimerSeconds?: string;
   additionalData?: Partial<AdditionalDataFields>;
 }
 const additionalTags = {
@@ -33,8 +35,9 @@ export function buildMerchantAccount(input: Pick<BiMPayInput, "gui" | "fiAlias" 
 export function buildAdditionalData(input: Partial<AdditionalDataFields> = {}): string {
   return Object.entries(additionalTags).map(([key, tag]) => optionalTlv(tag, input[key as keyof AdditionalDataFields] ?? "")).join("");
 }
-export function buildPrivateMetadata(gui = BIMPAY_GUI, timestamp = generateTimestamp()): string {
-  return optionalTlv("00", gui) + optionalTlv("01", timestamp);
+export function buildPrivateMetadata(gui = BIMPAY_GUI, timestamp = generateTimestamp(), timerSeconds = ""): string {
+  if (timerSeconds !== "" && !/^\d{8}$/.test(timerSeconds)) throw new Error("80.02 timer must contain exactly eight digits of whole seconds.");
+  return optionalTlv("00", gui) + optionalTlv("01", timestamp) + optionalTlv("02", timerSeconds);
 }
 export function buildBiMPayFields(input: BiMPayInput): EmvField[] {
   return [
@@ -48,7 +51,7 @@ export function buildBiMPayFields(input: BiMPayInput): EmvField[] {
     { tag: "59", value: input.merchantName.slice(0, 25) },
     { tag: "60", value: (input.merchantCity ?? "BRIDGETOWN").slice(0, 15) },
     { tag: "62", value: buildAdditionalData(input.additionalData) },
-    { tag: "80", value: buildPrivateMetadata(input.privateGui, input.timestamp) },
+    { tag: "80", value: buildPrivateMetadata(input.privateGui, input.timestamp, input.privateTimerSeconds) },
   ];
 }
 /** Returns all validation errors; does not throw for malformed runtime input. */
@@ -62,6 +65,7 @@ export function validateBiMPayInput(input: BiMPayInput): string[] {
     if (key === "additionalData") continue;
     if (value !== undefined && typeof value !== "string") errors.push(`${key} must be a string.`);
   }
+  if (input.initiationMethod !== undefined && !/^(11|12)$/.test(input.initiationMethod)) errors.push("initiationMethod must be 11 (static) or 12 (dynamic).");
   if (input.amountMode !== undefined && !["fixed", "variable"].includes(input.amountMode)) errors.push("amountMode must be fixed or variable.");
   if (input.amountMode === "fixed" && (typeof input.amount !== "string" || !isValidAmount(input.amount) || !Number.isFinite(Number(input.amount)) || Number(input.amount) <= 0)) errors.push("Fixed amount must be a positive number with zero or two decimal places.");
   if (input.timestamp !== undefined && !/^\d{14}$/.test(input.timestamp)) errors.push("timestamp must contain 14 digits (YYYYMMDDhhmmss).");

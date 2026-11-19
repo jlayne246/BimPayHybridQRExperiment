@@ -4,6 +4,8 @@ import StandaloneQrDialog from "./StandaloneQrDialog";
 import StandaloneQrOutput from "./StandaloneQrOutput";
 import paymentCardExample from "./assets/payment-card-example.png";
 import defaultQrLogo from "./assets/bimpay-qr-logo.png";
+import { encodeDebugDuration, DURATION_UNITS } from "./debugDuration";
+import type { DurationUnit } from "./debugDuration";
 import { BIMPAY_GUI, BIMPAY_SCHEME, buildBiMPayFields, buildMerchantAccount, buildAdditionalData, buildPrivateMetadata, buildEmvPayload, generateTimestamp, isValidAmount, renderPaymentQr, prepareQrLogo } from "bimpay-qr-generator";
 import type { EmvField, CoreFields, MerchantAccountFields, AdditionalDataFields, PrivateFields } from "bimpay-qr-generator";
 import { renderPaymentCard, exportPaymentCardPdf, QR_OUTPUT_SIZES, outputDimensions, templateDimensions } from "bimpay-payment-cards";
@@ -172,6 +174,13 @@ export default function Generator() {
     requestTimestamp: generateTimestamp(),
   });
 
+  const [timerDuration, setTimerDuration] = useState("");
+  const [timerUnit, setTimerUnit] = useState<DurationUnit>("seconds");
+  const timer = useMemo(() => {
+    try { return { value: encodeDebugDuration(timerDuration, timerUnit), error: "" }; }
+    catch (error) { return { value: "", error: error instanceof Error ? error.message : "Invalid duration." }; }
+  }, [timerDuration, timerUnit]);
+
   const [generatedFingerprint, setGeneratedFingerprint] = useState("");
   const [rawQr, setRawQr] = useState("");
   const [showStandaloneQr, setShowStandaloneQr] = useState(false);
@@ -218,27 +227,28 @@ export default function Generator() {
   );
 
   const privateTemplate = useMemo(() => {
-    return buildPrivateMetadata(privateFields.gui, privateFields.requestTimestamp);
-  }, [privateFields]);
+    return buildPrivateMetadata(privateFields.gui, privateFields.requestTimestamp, timer.value);
+  }, [privateFields, timer.value]);
 
   const emvFields = useMemo<EmvField[]>(() => {
     const input = {
       ...coreFields, ...merchantAccountFields, amountMode,
       additionalData: includedAdditionalData,
-      privateGui: privateFields.gui, timestamp: privateFields.requestTimestamp,
+      privateGui: privateFields.gui, timestamp: privateFields.requestTimestamp, privateTimerSeconds: timer.value,
     };
     try { return buildBiMPayFields(input); }
     catch { return [{ tag: "26", value: `Invalid TLV input: ${JSON.stringify(input)}` }]; }
-  }, [coreFields, merchantAccountFields, amountMode, includedAdditionalData, privateFields]);
+  }, [coreFields, merchantAccountFields, amountMode, includedAdditionalData, privateFields, timer.value]);
 
   const currentFingerprint = useMemo(
     () =>
       JSON.stringify({
         fields: emvFields.filter((field) => field.tag !== "80"),
         privateGui: privateFields.gui,
+        privateTimer: timer.error ? [timerDuration, timerUnit] : timer.value,
         logo: qrLogo,
       }),
-    [emvFields, privateFields.gui, qrLogo]
+    [emvFields, privateFields.gui, timer, timerDuration, timerUnit, qrLogo]
   );
     
   const qrIsCurrent =
@@ -265,7 +275,7 @@ export default function Generator() {
     },
   ];
 
-  function updateCore<K extends Exclude<keyof CoreFields, "payloadFormat" | "initiationMethod">>(key: K, value: CoreFields[K]): void {
+  function updateCore<K extends Exclude<keyof CoreFields, "payloadFormat">>(key: K, value: CoreFields[K]): void {
     setCoreFields((current) => ({ ...current, [key]: value }));
   }
 
@@ -288,10 +298,11 @@ export default function Generator() {
     setGenerating(true);
     
     try {
+      if (timer.error) { setMessage(timer.error); return; }
       const timestamp = generateTimestamp();
       const fieldsForGeneration = emvFields.map((field) => field.tag === "80" ? {
         ...field,
-        value: buildPrivateMetadata(privateFields.gui, timestamp),
+        value: buildPrivateMetadata(privateFields.gui, timestamp, timer.value),
       } : field);
       const payloadForGeneration = buildEmvPayload(fieldsForGeneration);
       if (!coreFields.merchantName.trim() || !coreFields.merchantCity.trim() ||
@@ -400,6 +411,8 @@ export default function Generator() {
       requestTimestamp: generateTimestamp(),
     });
 
+    setTimerDuration("");
+    setTimerUnit("seconds");
     setAmountMode("variable");
     setQrLogo(defaultQrLogo);
     setLogoError("");
@@ -569,7 +582,10 @@ export default function Generator() {
               {technicalMode && advancedMode && (
                 <>
                   <ReadOnlyField label="00 Payload Format" value={coreFields.payloadFormat} />
-                  <ReadOnlyField label="01 Initiation Method" value={coreFields.initiationMethod} helper="11 - Static." />
+                  <SelectField label="01 Initiation Method" value={coreFields.initiationMethod}
+                    onChange={value => updateCore("initiationMethod", value)}
+                    options={[{ value: "11", label: "11 — Static" }, { value: "12", label: "12 — Dynamic" }]}
+                    helper="11 identifies a static/reusable QR; 12 identifies a dynamic QR typically generated for a transaction. This is independent of fixed/variable amounts. Selecting 12 does not create a one-time payment or guarantee expiry or payment-app support." />
                 </>
               )}
 
@@ -725,6 +741,21 @@ export default function Generator() {
               {advancedMode && <ReadOnlyField label="80.00 GUI" value={privateFields.gui} />}
               <ReadOnlyField label="80.01 Request Timestamp / ID" value={privateFields.requestTimestamp} helper="Set automatically when you generate a QR." />
             </div>
+
+            {advancedMode && <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">80.02 Timer duration (experimental)</span>
+                <input type="text" inputMode="decimal" value={timerDuration} maxLength={24}
+                  onChange={event => setTimerDuration(event.target.value)} aria-invalid={Boolean(timer.error)} aria-describedby="timer-feedback"
+                  placeholder="Leave blank to omit 80.02" className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm" />
+              </label>
+              <SelectField label="Timer unit" value={timerUnit} onChange={value => setTimerUnit(value as DurationUnit)}
+                options={Object.keys(DURATION_UNITS).map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} />
+              <p id="timer-feedback" role={timer.error ? "alert" : undefined} className="text-xs text-slate-600 md:col-span-2">
+                {timer.error || (timer.value ? `Encoded 80.02: ${timer.value} (${Number(timer.value)} seconds).` : "80.02 is omitted when blank.")}
+                {" "}Experimental assumption: 80.02 is an eight-digit, zero-padded duration in seconds. Its meaning and payment-app handling are unverified. This only encodes metadata; it does not start a countdown, expire the QR, or enforce single use.
+              </p>
+            </div>}
 
             <TemplatePreview title="Tag 80 Template" value={privateTemplate} />
           </EditorSection>}

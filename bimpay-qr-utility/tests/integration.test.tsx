@@ -328,3 +328,47 @@ it("defaults donation cause to the recipient name until edited, across amount mo
   await ready();
   expect(cause().value).toBe("NEW RECIPIENT");
 });
+
+it("advanced debug controls encode initiation and optional duration, invalidate stale QRs, and reset", async () => {
+  await validForm(); await ready();
+  act(() => { window.location.hash = "#/debug"; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+  fireEvent.click(screen.getByRole("button", { name: "Show Advanced" }));
+  change("01 Initiation Method", "12");
+  change("80.02 Timer duration (experimental)", "1.5");
+  change("Timer unit", "minutes");
+  expect(screen.getByText(/Encoded 80.02: 00000090/)).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Copy", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Generate QR Codes" }));
+  await screen.findByText("QR generated.");
+  let payload = qr.mock.calls.filter(call => call[1] === 380).at(-1)![0];
+  expect(payload.startsWith("000201010212")).toBe(true);
+  expect(payload).toContain("020800000090");
+  expect((screen.getByRole("button", { name: "Copy", exact: true }) as HTMLButtonElement).disabled).toBe(false);
+  change("Timer unit", "seconds"); // 1.5 seconds cannot be encoded without rounding.
+  const count = qr.mock.calls.filter(call => call[1] === 380).length;
+  fireEvent.click(screen.getByRole("button", { name: "Generate QR Codes" }));
+  expect(qr.mock.calls.filter(call => call[1] === 380)).toHaveLength(count);
+  expect((screen.getByRole("button", { name: "Copy", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+  change("80.02 Timer duration (experimental)", "");
+  fireEvent.click(screen.getByRole("button", { name: "Generate QR Codes" }));
+  await screen.findByText("QR generated.");
+  payload = qr.mock.calls.filter(call => call[1] === 380).at(-1)![0];
+  expect(payload).not.toContain("020800000090");
+  fireEvent.click(screen.getByRole("button", { name: "Clear Form" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show Advanced" }));
+  expect((screen.getByLabelText(/^01 Initiation Method/) as HTMLSelectElement).value).toBe("11");
+  expect((screen.getByLabelText(/^80.02 Timer duration/) as HTMLInputElement).value).toBe("");
+  expect((screen.getByLabelText(/^Timer unit/) as HTMLSelectElement).value).toBe("seconds");
+});
+it("ignores a pending QR result after the private timer changes", async () => {
+  await validForm(); await ready();
+  act(() => { window.location.hash = "#/debug"; window.dispatchEvent(new HashChangeEvent("hashchange")); });
+  fireEvent.click(screen.getByRole("button", { name: "Show Advanced" }));
+  change("80.02 Timer duration (experimental)", "60");
+  const pending = deferred<string>(); qr.mockImplementationOnce(() => pending.promise);
+  fireEvent.click(screen.getByRole("button", { name: "Generate QR Codes" }));
+  change("80.02 Timer duration (experimental)", "120");
+  await act(async () => pending.resolve("outdated-timer-qr"));
+  expect(screen.getAllByText(/Payment details (?:have )?changed/).length).toBeGreaterThan(0);
+  expect((screen.getByRole("button", { name: "Copy", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+});
