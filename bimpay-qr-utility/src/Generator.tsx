@@ -833,11 +833,35 @@ export default function Generator() {
           )}
 
           {qrIsCurrent && (
-            <p className="mt-3 text-xs leading-5 text-slate-600">
-              Before displaying or sharing this QR, scan it with a
-              compatible payment app and confirm that the recipient
-              and payment details are correct.
-            </p>
+            
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-lg" aria-hidden="true">⚠️</span>
+            
+                <div>
+                  <p className="text-sm font-bold text-amber-950">
+                    Verify your QR code before use
+                  </p>
+            
+                  <div className="mt-1 space-y-2 text-sm leading-6 text-amber-900">
+                    <p>
+                      Before displaying or sharing this QR code, scan it
+                      using a compatible payment app and verify that the
+                      recipient name, financial institution, branch and
+                      receiving account details are correct.
+                      This utility does not verify account ownership.
+                    </p>
+            
+                    <p>
+                      We recommend making a test payment of{" "}
+                      <strong>BBD $0.01</strong> and confirming that the
+                      funds have been received in the intended account.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           )}
 
           {showStandaloneQr && qrIsCurrent && <StandaloneQrDialog
